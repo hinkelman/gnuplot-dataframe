@@ -35,7 +35,7 @@ The examples on this page use the data defined in [examples/examples.ss](https:/
 
 **draws:** a line plot of column `y` against column `x`. Rows are sorted by `x` within each group. A missing `y` value breaks the line.
 
-**options:** `'points` (`#t` to also draw points; default `#f`), `'linewidth` (default `2`), and `'sort` (`#f` to connect rows in data order; default `#t`), plus the [options for all plots](options.md).
+**options:** `'points` (`#t` to also draw points; default `#f`), `'linewidth` (default `2`), `'pointtype` and `'pointsize` (for the points), and `'sort` (`#f` to connect rows in data order; default `#t`), plus the [options for all plots](options.md).
 
 ```scheme
 > (plot-lines temps 'month 'temp 'group 'city 'points #t
@@ -51,7 +51,7 @@ The examples on this page use the data defined in [examples/examples.ss](https:/
 
 **draws:** a bar chart with a bar of height `y` at each value of `x`. Values of `y` are plotted as given, like `geom_col` in `ggplot2`, not counted. With `'group`, the bars for each category are drawn side by side.
 
-**options:** the [options for all plots](options.md).
+**options:** `'fill` (default `0.85`), `'border` (default `#t`), and `'width` (total width at each category; default `0.8`), plus the [options for all plots](options.md). See [Fill and border](options.md#fill-and-border).
 
 ```scheme
 > (plot-bars (dataframe-filter* temps (month) (member month '(1 4 7 10)))
@@ -67,7 +67,7 @@ The examples on this page use the data defined in [examples/examples.ss](https:/
 
 **draws:** a histogram of the numeric column `x`. With `'group`, the histograms of each group overlap, with transparent fill, and share the same bins.
 
-**options:** `'bins` (number of bins; default from Sturges' rule, as in R's `hist`) and `'binwidth` (overrides `'bins`), plus the [options for all plots](options.md). The y axis label defaults to `"Count"`.
+**options:** `'bins` (number of bins; default from Sturges' rule, as in R's `hist`), `'binwidth` (overrides `'bins`), `'fill`, and `'border`, plus the [options for all plots](options.md). The y axis label defaults to `"Count"`.
 
 ```scheme
 > (plot-histogram flowers 'length 'group 'species 'binwidth 0.2
@@ -82,7 +82,7 @@ The examples on this page use the data defined in [examples/examples.ss](https:/
 
 **draws:** a boxplot of column `y` for each value of column `x`. Pass `#f` for `x` to draw a single box of all `y` values. With `'group`, the boxes for each category are drawn side by side.
 
-**options:** the [options for all plots](options.md).
+**options:** `'fill` (default `0.5`), `'border` (default `#t`), `'width` (total width at each category; default `0.6`), and `'pointtype` and `'pointsize` (for the outliers), plus the [options for all plots](options.md). See [Fill and border](options.md#fill-and-border).
 
 ```scheme
 > (plot-boxplot flowers 'species 'length 'ylabel "Sepal length")

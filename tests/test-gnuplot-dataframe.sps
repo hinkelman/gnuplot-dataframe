@@ -83,7 +83,7 @@
 (test-begin "boxplot-test")
 (let ([s (script (lambda () (plot-boxplot df 'city 'temp)))])
   (test-assert (contains? s "$d1 << EOD\n10\n12.5\nEOD\n"))
-  (test-assert (contains? s "$d1 using (0):1:(0.6) with boxplot fs solid 0.5 border -1 lc 1 notitle, $d2 using (1):1:(0.6)")))
+  (test-assert (contains? s "$d1 using (0):1:(0.6) with boxplot fs solid 0.5 border -1 pt 7 ps 1 lc 1 notitle, $d2 using (1):1:(0.6)")))
 (let ([s (script (lambda () (plot-boxplot df #f 'temp)))])
   (test-assert (contains? s "$d1 << EOD\n10\n12.5\n20\n21\n23\nEOD\n")))
 ;; rows with a missing x are skipped
@@ -210,5 +210,39 @@
 (test-error (script (lambda () (plot-points fdf 'month 'temp 'facet 'city 'facet-scales 'loose))))
 (test-error (script (lambda () (plot-layers (layer-points fdf 'month 'temp 'facet 'city)))))
 (test-end "facet-test")
+
+;;-------------------------------------------------------------
+
+(test-begin "style-test")
+(define sdf (make-df* (g "a" "a" "b" "b") (y 1 2 3 4) (k "p" "q" "p" "q")))
+;; fill density, border color, and total width
+(let ([s (script (lambda () (plot-bars sdf 'g 'y 'group 'k 'fill 0.4 'border "gray" 'width 0.6)))])
+  (test-assert (contains? s "$d1 << EOD\n-0.15 1 0.3\n0.85 3 0.3\nEOD\n"))
+  (test-assert (contains? s "with boxes fs solid 0.4 border lc rgb 'gray' lc 1 title 'p'")))
+(test-assert (contains? (script (lambda () (plot-bars sdf 'g 'y 'fill #f 'border #f)))
+                        "with boxes fs transparent solid 0 noborder lc 1 notitle"))
+;; grouped histograms use transparent fill
+(test-assert (contains? (script (lambda () (plot-histogram sdf 'y 'group 'g 'fill 0.3)))
+                        "with boxes fs transparent solid 0.3 border -1 lc 1 title 'a'"))
+;; boxplot width, fill, and outlier points; legend entries are drawn as boxes
+(let ([s (script (lambda () (plot-boxplot sdf 'g 'y 'group 'k 'width 0.4 'fill 0.9
+                                          'pointtype 6 'pointsize 0.5)))])
+  (test-assert (contains? s "using (-0.1):1:(0.2) with boxplot fs solid 0.9 border -1 pt 6 ps 0.5 lc 1 title 'p'")))
+(test-assert (contains? (script (lambda () (plot-boxplot sdf 'g 'y 'group 'k 'pointtype 6 'facet 'k)))
+                        "keyentry with boxes fs solid 0.5 border -1 lc 1 title 'p'"))
+;; points on lines
+(test-assert (contains? (script (lambda () (plot-lines sdf 'y 'y 'points #t 'pointtype 5 'pointsize 2 'linewidth 1.5)))
+                        "with linespoints lw 1.5 pt 5 ps 2 lc 1 notitle"))
+;; invalid values are caught before gnuplot sees them
+(test-error (script (lambda () (plot-bars sdf 'g 'y 'fill 2))))
+(test-error (script (lambda () (plot-bars sdf 'g 'y 'width 0))))
+(test-error (script (lambda () (plot-bars sdf 'g 'y 'border 'red))))
+(test-error (script (lambda () (plot-points sdf 'y 'y 'pointtype 1.5))))
+(test-error (script (lambda () (plot-points sdf 'y 'y 'color 'red))))
+(test-error (script (lambda () (plot-lines sdf 'y 'y 'linewidth "thick"))))
+(test-error (script (lambda () (plot-histogram sdf 'y 'bins 0))))
+;; fill and width don't apply to points
+(test-error (script (lambda () (plot-points sdf 'y 'y 'fill 0.5))))
+(test-end "style-test")
 
 (exit (if (zero? (test-runner-fail-count (test-runner-get))) 0 1))

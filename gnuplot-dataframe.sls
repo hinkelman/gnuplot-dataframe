@@ -50,9 +50,10 @@
 
   ;; One datablock plus the plot clause that draws it. columns is a list
   ;; of equal-length value lists, spec is the clause after the datablock
-  ;; name (e.g., "using 1:2 with points ..."), and title is a key entry or #f.
+  ;; name (e.g., "using 1:2 with points ..."), key-style is the style of
+  ;; its legend entry (e.g., "with points ..."), and title is a key entry or #f.
   (define-record-type element
-    (fields columns spec title))
+    (fields columns spec key-style title))
 
   ;;---------------------------------------------------------------------
   ;; Layers.
@@ -63,14 +64,14 @@
 
   (define (layer-lines df x y . opts)
     (new-layer "(layer-lines df x y . opts)" 'lines df x y opts
-               '(points linewidth sort)))
+               '(points linewidth pointtype pointsize sort)))
 
   (define (layer-bars df x y . opts)
-    (new-layer "(layer-bars df x y . opts)" 'bars df x y opts '()))
+    (new-layer "(layer-bars df x y . opts)" 'bars df x y opts '(fill border width)))
 
   (define (layer-histogram df x . opts)
     (let ([who "(layer-histogram df x . opts)"])
-      (let ([l (new-layer who 'histogram df x #f opts '(bins binwidth))])
+      (let ([l (new-layer who 'histogram df x #f opts '(bins binwidth fill border))])
         (let ([vals (remove-na ($ df x))])
           (unless (and (pair? vals) (for-all real? vals))
             (assertion-violation who "x must be a numeric column" x)))
@@ -78,12 +79,46 @@
 
   ;; x may be #f for a single box of all y values
   (define (layer-boxplot df x y . opts)
-    (new-layer "(layer-boxplot df x y . opts)" 'boxplot df x y opts '()))
+    (new-layer "(layer-boxplot df x y . opts)" 'boxplot df x y opts
+               '(fill border width pointtype pointsize)))
 
   (define (new-layer who kind df x y opts extra)
     (let ([o (parse-options who opts (append layer-options extra))])
       (check-columns who df (list x y (opt o 'group #f)))
+      (check-style-options who o)
       (make-layer kind df x y o)))
+
+  ;; Style values are written into gnuplot commands, so they are checked
+  ;; here rather than left to produce a broken script.
+  (define (check-style-options who o)
+    (for-each
+     (lambda (p)
+       (let ([name (car p)] [v (cdr p)])
+         (unless (case name
+                   [(fill) (or (not v) (and (real? v) (<= 0 v 1)))]
+                   [(border) (or (boolean? v) (string? v))]
+                   [(color label) (or (not v) (string? v))]
+                   [(width linewidth pointsize binwidth) (and (real? v) (positive? v))]
+                   [(pointtype bins) (and (integer? v) (exact? v) (positive? v))]
+                   [else #t])
+           (assertion-violation who "invalid option value" name v))))
+     o))
+
+  ;; Fill style for bars, histograms, and boxplots. fill is a density from
+  ;; 0 (background) to 1 (full color), or #f for no fill; transparent fill
+  ;; lets overlapping boxes show through. border is #t (black), #f, or a color.
+  ;; No fill is a fully transparent fill rather than "fs empty", because
+  ;; gnuplot draws empty boxes in the line color and ignores the border.
+  (define (fill-style o default-fill transparent?)
+    (let ([fill (opt o 'fill default-fill)]
+          [border (opt o 'border #t)])
+      (string-append
+       (if fill
+           (format "fs ~asolid ~a" (if transparent? "transparent " "") (fmt fill))
+           "fs transparent solid 0")
+       (cond [(string? border) (string-append " border lc rgb " (quote-string border))]
+             [border " border -1"]
+             [else " noborder"]))))
 
   ;;---------------------------------------------------------------------
   ;; Single-layer shortcuts. Options are split between the layer and plot.
@@ -190,9 +225,6 @@
     (let ([kinds (map layer-kind layers)])
       (append
        (if levels (category-xtics levels) '())
-       (if (memq 'boxplot kinds)
-           '("set style boxplot outliers pointtype 7")
-           '())
        (if (or (memq 'bars kinds) (memq 'histogram kinds))
            ;; leave room above the tallest bar, and start bars from zero
            ;; when nothing is negative, which autoscaling does not ensure
@@ -232,10 +264,13 @@
            [style (if lines?
                       (format "with ~a lw ~a~a"
                               (if (opt o 'points #f) "linespoints" "lines")
-                              (opt o 'linewidth 2)
-                              (if (opt o 'points #f) " pt 7" ""))
+                              (fmt (opt o 'linewidth 2))
+                              (if (opt o 'points #f)
+                                  (format " pt ~a ps ~a"
+                                          (opt o 'pointtype 7) (fmt (opt o 'pointsize 1)))
+                                  ""))
                       (format "with points pt ~a ps ~a"
-                              (opt o 'pointtype 7) (opt o 'pointsize 1)))])
+                              (opt o 'pointtype 7) (fmt (opt o 'pointsize 1))))])
       (map (lambda (g)
              (let* ([sub (cdr g)]
                     [rows (map list (map ->x ($ sub (layer-x l))) ($ sub (layer-y l)))]
@@ -243,23 +278,29 @@
                               (sort (lambda (a b) (< (car a) (car b)))
                                     (filter (lambda (r) (not (na? (car r)))) rows))
                               rows)])
-               (make-element (list (map car rows) (map cadr rows))
-                             (string-append "using 1:2 " style " " (color g))
-                             (title g))))
+               (let ([style (string-append style " " (color g))])
+                 (make-element (list (map car rows) (map cadr rows))
+                               (string-append "using 1:2 " style)
+                               style
+                               (title g)))))
            groups)))
 
   (define (bar-elements l groups ->x color title)
-    (let* ([k (length groups)]
-           [width (/ 0.8 k)])
+    (let* ([o (layer-o l)]
+           [k (length groups)]
+           ;; 'width is the total width of the bars at each category
+           [width (/ (opt o 'width 0.8) k)])
       (map (lambda (g i)
              (let* ([sub (cdr g)]
                     ;; rows with a missing x are skipped (written as NaN)
                     [pos (map (lambda (v) (if (na? v) v (+ (->x v) (dodge i k width))))
                               ($ sub (layer-x l)))])
-               (make-element (list pos ($ sub (layer-y l)) (map (lambda (p) width) pos))
-                             (string-append "using 1:2:3 with boxes fs solid 0.85 border -1 "
-                                            (color g))
-                             (title g))))
+               (let ([style (string-append "with boxes " (fill-style o 0.85 #f)
+                                           " " (color g))])
+                 (make-element (list pos ($ sub (layer-y l)) (map (lambda (p) width) pos))
+                               (string-append "using 1:2:3 " style)
+                               style
+                               (title g)))))
            groups (iota k))))
 
   (define (histogram-elements l groups color title)
@@ -275,22 +316,31 @@
                            1
                            (/ (- hi lo) (opt o 'bins (sturges (max n 1)))))))]
            [nbins (max 1 (exact (ceiling (/ (- hi lo) width))))]
+           ;; grouped histograms overlap, so their fill is transparent
            [fill (if (> (length groups) 1)
-                     "fs transparent solid 0.5 border -1"
-                     "fs solid 0.85 border -1")])
+                     (fill-style o 0.5 #t)
+                     (fill-style o 0.85 #f))])
       (map (lambda (g)
-             (make-element (list (map (lambda (b) (+ lo (* width (+ b 0.5)))) (iota nbins))
-                                 (bin-counts (remove-na ($ (cdr g) x)) lo width nbins)
-                                 (make-list nbins width))
-                           (string-append "using 1:2:3 with boxes " fill " " (color g))
-                           (title g)))
+             (let ([style (string-append "with boxes " fill " " (color g))])
+               (make-element (list (map (lambda (b) (+ lo (* width (+ b 0.5)))) (iota nbins))
+                                   (bin-counts (remove-na ($ (cdr g) x)) lo width nbins)
+                                   (make-list nbins width))
+                             (string-append "using 1:2:3 " style)
+                             style
+                             (title g))))
            groups)))
 
   (define (boxplot-elements l groups levels color title)
     (let* ([x (layer-x l)]
            [y (layer-y l)]
            [k (length groups)]
-           [width (/ 0.6 k)])
+           [o (layer-o l)]
+           ;; 'width is the total width of the boxes at each category
+           [width (/ (opt o 'width 0.6) k)]
+           [fill (fill-style o 0.5 #f)]
+           ;; pt and ps style the outliers
+           [style (format "~a pt ~a ps ~a" fill
+                          (opt o 'pointtype 7) (fmt (opt o 'pointsize 1)))])
       (apply append
              (map (lambda (g i)
                     ;; one box per category; rows with a missing x are skipped
@@ -309,16 +359,19 @@
                                       (and (pair? ys)
                                            (make-element
                                             (list ys)
-                                            (format "using (~a):1:(~a) with boxplot fs solid 0.5 border -1 ~a"
+                                            (format "using (~a):1:(~a) with boxplot ~a ~a"
                                                     (fmt (+ (index-of (->label (car b)) levels)
                                                             (dodge i k width)))
-                                                    (fmt width) (color g))
+                                                    (fmt width) style (color g))
+                                            ;; legend entries can't be boxplots
+                                            (format "with boxes ~a ~a" fill (color g))
                                             #f))))
                                   boxes))])
                       ;; one key entry per group, on its first box
                       (if (pair? elements)
                           (let ([e (car elements)])
-                            (cons (make-element (element-columns e) (element-spec e) (title g))
+                            (cons (make-element (element-columns e) (element-spec e)
+                                                (element-key-style e) (title g))
                                   (cdr elements)))
                           '())))
                   groups (iota k)))))
@@ -605,11 +658,7 @@
   ;; Legend entry drawn without data, in the style of an element.
   (define (key-entry e title)
     (and title
-         (let* ([spec (element-spec e)]
-                [style (substring spec (string-index spec "with ") (string-length spec))])
-           (format "keyentry ~a title ~a"
-                   (string-replace style "with boxplot" "with boxes")
-                   (quote-string title)))))
+         (format "keyentry ~a title ~a" (element-key-style e) (quote-string title))))
 
   ;; The shared legend sits right of the panels; a key string instead
   ;; places the legend inside the last panel.
@@ -751,13 +800,6 @@
         (cond [(> (+ i m) n) #f]
               [(string=? (substring s i (+ i m)) sub) i]
               [else (loop (+ i 1))]))))
-
-  (define (string-replace s old new)
-    (let ([i (string-index s old)])
-      (if i
-          (string-append (substring s 0 i) new
-                         (substring s (+ i (string-length old)) (string-length s)))
-          s)))
 
   (define (take-while pred lst)
     (if (and (pair? lst) (pred (car lst)))

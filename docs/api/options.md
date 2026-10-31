@@ -22,22 +22,49 @@ These describe the data and how it's drawn.
 | Option | Value | Default |
 |---|---|---|
 | `'group` | column name; one series per unique value, in its own color and with a legend entry | none |
-| `'color` | color name (e.g., `"black"`) or `"#rrggbb"`; overrides the colors from `'group` | gnuplot's color sequence |
+| `'color` | [color](#colors); overrides the colors from `'group` | gnuplot's color sequence |
 | `'label` | legend entry for an ungrouped layer | none |
 
 Options for specific plot types:
 
 | Procedure | Option | Value | Default |
 |---|---|---|---|
-| `plot-points`, `layer-points` | `'pointsize` | number | `1` |
+| `plot-points`, `layer-points` | `'pointsize` | positive number | `1` |
 | | `'pointtype` | gnuplot point type number | `7` (filled circle) |
 | `plot-lines`, `layer-lines` | `'points` | `#t` to also draw points | `#f` |
-| | `'linewidth` | number | `2` |
+| | `'linewidth` | positive number | `2` |
+| | `'pointtype`, `'pointsize` | as for points, when `'points` is `#t` | `7`, `1` |
 | | `'sort` | `#f` to connect rows in data order | `#t` |
+| `plot-bars`, `layer-bars` | `'fill` | [fill density](#fill-and-border) from 0 to 1, or `#f` for no fill | `0.85` |
+| | `'border` | `#t` (black), `#f`, or a [color](#colors) | `#t` |
+| | `'width` | total width of the bars at each category, where categories are 1 apart | `0.8` |
 | `plot-histogram`, `layer-histogram` | `'bins` | number of bins | Sturges' rule, as in R's `hist` |
 | | `'binwidth` | bin width; overrides `'bins` | |
+| | `'fill` | [fill density](#fill-and-border) from 0 to 1, or `#f` for no fill | `0.85`, or `0.5` (transparent) when grouped |
+| | `'border` | `#t` (black), `#f`, or a [color](#colors) | `#t` |
+| `plot-boxplot`, `layer-boxplot` | `'fill` | [fill density](#fill-and-border) from 0 to 1, or `#f` for no fill | `0.5` |
+| | `'border` | `#t` (black), `#f`, or a [color](#colors) | `#t` |
+| | `'width` | total width of the boxes at each category | `0.6` |
+| | `'pointtype`, `'pointsize` | style of the outlier points | `7`, `1` |
 
 To see the available point types, run `test` in gnuplot.
+
+An option value of the wrong kind, such as `'fill 2` or `'pointtype 1.5`, is an error.
+
+### Fill and border
+
+`'fill` sets how strongly bars, histogram bars, and boxes are filled with their color: `1` is the full color, and smaller values blend toward the background. When a histogram has groups, the bars overlap, so the fill is transparent instead and overlapping bars show through.
+
+`'border` draws the outline: `#t` in black, a color, or `#f` for none. With `'fill #f 'border #f`, nothing is drawn.
+
+```scheme
+> (plot-bars df 'g 'y 'fill #f 'border "dark-red")   ; outlined bars
+> (plot-boxplot flowers 'species 'length 'fill 0.2 'border "navy" 'width 0.3)
+```
+
+### Colors
+
+`'color` and `'border` take a color name such as `"black"`, `"gray"`, or `"dark-red"`, or a hex color `"#rrggbb"` such as `"#b22222"`. gnuplot has its own list of 111 color names, which doesn't include every CSS name (e.g., `"firebrick"`); if a name isn't on the list, gnuplot prints an error and the plot isn't drawn. To see the list, run `show colornames` in gnuplot. Hex colors always work.
 
 ---
 
