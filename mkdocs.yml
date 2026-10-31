@@ -1,0 +1,39 @@
+site_name: Scheme gnuplot-dataframe Library
+site_description: Plot dataframes with gnuplot from Chez Scheme. Points, lines, bars, histograms, and boxplots, with grouping and layering.
+site_url: https://hinkelman.github.io/gnuplot-dataframe
+repo_url: https://github.com/hinkelman/gnuplot-dataframe
+repo_name: hinkelman/gnuplot-dataframe
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: teal
+      accent: teal
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation & Import: getting-started.md
+  - API Reference:
+    - Plots: api/plots.md
+    - Options: api/options.md
+    - Layers: api/layers.md
+    - gnuplot Scripts: api/scripts.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true

@@ -1,5 +1,5 @@
 ;; Run from the repository root:  scheme --script examples/examples.ss
-;; Writes example images to examples/img/
+;; Writes example images to docs/img/ (used by the README and docs site)
 
 (import (chezscheme)
         (dataframe)
@@ -41,24 +41,24 @@
 (plot-lines temps 'month 'temp 'group 'city 'points #t
             'title "Average monthly temperature"
             'ylabel "Temperature (°C)" 'key "top left"
-            'output "examples/img/lines.png")
+            'output "docs/img/lines.png")
 
 (plot-points flowers 'length 'width 'group 'species
              'xlabel "Sepal length" 'ylabel "Sepal width"
-             'output "examples/img/points.png")
+             'output "docs/img/points.png")
 
 (plot-bars (dataframe-filter* temps (month) (member month '(1 4 7 10)))
            'month 'temp 'group 'city
            'title "Seasonal temperatures" 'grid #t
-           'output "examples/img/bars.png")
+           'output "docs/img/bars.png")
 
 (plot-histogram flowers 'length 'group 'species 'binwidth 0.2
                 'xlabel "Sepal length"
-                'output "examples/img/histogram.png")
+                'output "docs/img/histogram.png")
 
 (plot-boxplot flowers 'species 'length
               'ylabel "Sepal length"
-              'output "examples/img/boxplot.png")
+              'output "docs/img/boxplot.png")
 
 ;; Layers ---------------------------------------------------------------
 
@@ -82,7 +82,7 @@
 (plot-layers (layer-points flowers 'length 'width 'group 'species)
              (layer-lines fits 'length 'width 'group 'species)
              'xlabel "Sepal length" 'ylabel "Sepal width"
-             'output "examples/img/layers-fit.png")
+             'output "docs/img/layers-fit.png")
 
 (define species-means
   (dataframe-aggregate* flowers (species) (avg (length) (mean length))))
@@ -92,4 +92,4 @@
                            'color "black" 'pointtype 9 'pointsize 1.5
                            'label "Mean")
              'ylabel "Sepal length"
-             'output "examples/img/layers-boxplot.png")
+             'output "docs/img/layers-boxplot.png")
