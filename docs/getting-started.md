@@ -4,15 +4,23 @@
 
 [gnuplot](http://gnuplot.info) 5.2.6 or later. Tested with gnuplot 6.0 and Chez Scheme 10.3.
 
-`gnuplot-dataframe` depends on [dataframe](https://hinkelman.github.io/dataframe) and [gnuplot-pipe](https://github.com/hinkelman/gnuplot-pipe), which Akku installs automatically.
-
 ## Installation
 
+Clone this repository and its dependencies, [dataframe](https://github.com/hinkelman/dataframe) and [gnuplot-pipe](https://github.com/hinkelman/gnuplot-pipe):
+
 ```
-$ akku install gnuplot-dataframe
+$ git clone https://github.com/hinkelman/gnuplot-dataframe
+$ git clone https://github.com/hinkelman/dataframe
+$ git clone https://github.com/hinkelman/gnuplot-pipe
 ```
 
-For more information on getting started with [Akku](https://akkuscm.org/), see this [blog post](https://www.travishinkelman.com/posts/getting-started-with-akku-package-manager-for-scheme/).
+Then add the three directories to Chez Scheme's library path, e.g., in your shell profile:
+
+```
+$ export CHEZSCHEMELIBDIRS="/path/to/gnuplot-dataframe:/path/to/dataframe:/path/to/gnuplot-pipe:$CHEZSCHEMELIBDIRS"
+```
+
+Those libraries have dependencies of their own, which also need to be on the library path: gnuplot-pipe uses SRFI 1 and SRFI 13 (e.g., from [chez-srfi](https://github.com/arcfide/chez-srfi)), and dataframe uses `(slib format)`.
 
 ## Import
 
