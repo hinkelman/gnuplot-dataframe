@@ -520,6 +520,30 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Layer options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fill-and-border" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fill and border
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#colors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Colors
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -646,6 +670,30 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Layer options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fill-and-border" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fill and border
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#colors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Colors
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -704,7 +752,7 @@
 </tr>
 <tr>
 <td><code>'color</code></td>
-<td>color name (e.g., <code>"black"</code>) or <code>"#rrggbb"</code>; overrides the colors from <code>'group</code></td>
+<td><a href="#colors">color</a>; overrides the colors from <code>'group</code></td>
 <td>gnuplot's color sequence</td>
 </tr>
 <tr>
@@ -728,7 +776,7 @@
 <tr>
 <td><code>plot-points</code>, <code>layer-points</code></td>
 <td><code>'pointsize</code></td>
-<td>number</td>
+<td>positive number</td>
 <td><code>1</code></td>
 </tr>
 <tr>
@@ -746,14 +794,38 @@
 <tr>
 <td></td>
 <td><code>'linewidth</code></td>
-<td>number</td>
+<td>positive number</td>
 <td><code>2</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>'pointtype</code>, <code>'pointsize</code></td>
+<td>as for points, when <code>'points</code> is <code>#t</code></td>
+<td><code>7</code>, <code>1</code></td>
 </tr>
 <tr>
 <td></td>
 <td><code>'sort</code></td>
 <td><code>#f</code> to connect rows in data order</td>
 <td><code>#t</code></td>
+</tr>
+<tr>
+<td><code>plot-bars</code>, <code>layer-bars</code></td>
+<td><code>'fill</code></td>
+<td><a href="#fill-and-border">fill density</a> from 0 to 1, or <code>#f</code> for no fill</td>
+<td><code>0.85</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>'border</code></td>
+<td><code>#t</code> (black), <code>#f</code>, or a <a href="#colors">color</a></td>
+<td><code>#t</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>'width</code></td>
+<td>total width of the bars at each category, where categories are 1 apart</td>
+<td><code>0.8</code></td>
 </tr>
 <tr>
 <td><code>plot-histogram</code>, <code>layer-histogram</code></td>
@@ -767,9 +839,54 @@
 <td>bin width; overrides <code>'bins</code></td>
 <td></td>
 </tr>
+<tr>
+<td></td>
+<td><code>'fill</code></td>
+<td><a href="#fill-and-border">fill density</a> from 0 to 1, or <code>#f</code> for no fill</td>
+<td><code>0.85</code>, or <code>0.5</code> (transparent) when grouped</td>
+</tr>
+<tr>
+<td></td>
+<td><code>'border</code></td>
+<td><code>#t</code> (black), <code>#f</code>, or a <a href="#colors">color</a></td>
+<td><code>#t</code></td>
+</tr>
+<tr>
+<td><code>plot-boxplot</code>, <code>layer-boxplot</code></td>
+<td><code>'fill</code></td>
+<td><a href="#fill-and-border">fill density</a> from 0 to 1, or <code>#f</code> for no fill</td>
+<td><code>0.5</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>'border</code></td>
+<td><code>#t</code> (black), <code>#f</code>, or a <a href="#colors">color</a></td>
+<td><code>#t</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>'width</code></td>
+<td>total width of the boxes at each category</td>
+<td><code>0.6</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>'pointtype</code>, <code>'pointsize</code></td>
+<td>style of the outlier points</td>
+<td><code>7</code>, <code>1</code></td>
+</tr>
 </tbody>
 </table>
 <p>To see the available point types, run <code>test</code> in gnuplot.</p>
+<p>An option value of the wrong kind, such as <code>'fill 2</code> or <code>'pointtype 1.5</code>, is an error.</p>
+<h3 id="fill-and-border">Fill and border<a class="headerlink" href="#fill-and-border" title="Permanent link">&para;</a></h3>
+<p><code>'fill</code> sets how strongly bars, histogram bars, and boxes are filled with their color: <code>1</code> is the full color, and smaller values blend toward the background. When a histogram has groups, the bars overlap, so the fill is transparent instead and overlapping bars show through.</p>
+<p><code>'border</code> draws the outline: <code>#t</code> in black, a color, or <code>#f</code> for none. With <code>'fill #f 'border #f</code>, nothing is drawn.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">plot-bars</span><span class="w"> </span><span class="nv">df</span><span class="w"> </span><span class="ss">&#39;g</span><span class="w"> </span><span class="ss">&#39;y</span><span class="w"> </span><span class="ss">&#39;fill</span><span class="w"> </span><span class="no">#f</span><span class="w"> </span><span class="ss">&#39;border</span><span class="w"> </span><span class="s">&quot;dark-red&quot;</span><span class="p">)</span><span class="w">   </span><span class="c1">; outlined bars</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">plot-boxplot</span><span class="w"> </span><span class="nv">flowers</span><span class="w"> </span><span class="ss">&#39;species</span><span class="w"> </span><span class="ss">&#39;length</span><span class="w"> </span><span class="ss">&#39;fill</span><span class="w"> </span><span class="mf">0.2</span><span class="w"> </span><span class="ss">&#39;border</span><span class="w"> </span><span class="s">&quot;navy&quot;</span><span class="w"> </span><span class="ss">&#39;width</span><span class="w"> </span><span class="mf">0.3</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="colors">Colors<a class="headerlink" href="#colors" title="Permanent link">&para;</a></h3>
+<p><code>'color</code> and <code>'border</code> take a color name such as <code>"black"</code>, <code>"gray"</code>, or <code>"dark-red"</code>, or a hex color <code>"#rrggbb"</code> such as <code>"#b22222"</code>. gnuplot has its own list of 111 color names, which doesn't include every CSS name (e.g., <code>"firebrick"</code>); if a name isn't on the list, gnuplot prints an error and the plot isn't drawn. To see the list, run <code>show colornames</code> in gnuplot. Hex colors always work.</p>
 <hr />
 <h2 id="plot-options">Plot options<a class="headerlink" href="#plot-options" title="Permanent link">&para;</a></h2>
 <p>These describe the whole figure.</p>
@@ -845,8 +962,8 @@
 </tbody>
 </table>
 <p>Some useful values for <code>'key</code> are <code>"top left"</code>, <code>"bottom right"</code>, <code>"outside right top"</code>, <code>"outside bottom center horizontal"</code>, and <code>"top left box"</code>. Any position accepted by gnuplot's <code>set key</code> works.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">plot-points</span><span class="w"> </span><span class="nv">df</span><span class="w"> </span><span class="ss">&#39;x</span><span class="w"> </span><span class="ss">&#39;y</span><span class="w"> </span><span class="ss">&#39;group</span><span class="w"> </span><span class="ss">&#39;trt</span><span class="w"> </span><span class="ss">&#39;key</span><span class="w"> </span><span class="s">&quot;bottom right&quot;</span><span class="w"> </span><span class="ss">&#39;logscale</span><span class="w"> </span><span class="ss">&#39;y</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">               </span><span class="ss">&#39;yrange</span><span class="w"> </span><span class="o">&#39;</span><span class="p">(</span><span class="mi">1</span><span class="w"> </span><span class="no">#f</span><span class="p">)</span><span class="w"> </span><span class="ss">&#39;output</span><span class="w"> </span><span class="s">&quot;scatter.pdf&quot;</span><span class="w"> </span><span class="ss">&#39;size</span><span class="w"> </span><span class="o">&#39;</span><span class="p">(</span><span class="mi">700</span><span class="w"> </span><span class="mi">500</span><span class="p">))</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">plot-points</span><span class="w"> </span><span class="nv">df</span><span class="w"> </span><span class="ss">&#39;x</span><span class="w"> </span><span class="ss">&#39;y</span><span class="w"> </span><span class="ss">&#39;group</span><span class="w"> </span><span class="ss">&#39;trt</span><span class="w"> </span><span class="ss">&#39;key</span><span class="w"> </span><span class="s">&quot;bottom right&quot;</span><span class="w"> </span><span class="ss">&#39;logscale</span><span class="w"> </span><span class="ss">&#39;y</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">               </span><span class="ss">&#39;yrange</span><span class="w"> </span><span class="o">&#39;</span><span class="p">(</span><span class="mi">1</span><span class="w"> </span><span class="no">#f</span><span class="p">)</span><span class="w"> </span><span class="ss">&#39;output</span><span class="w"> </span><span class="s">&quot;scatter.pdf&quot;</span><span class="w"> </span><span class="ss">&#39;size</span><span class="w"> </span><span class="o">&#39;</span><span class="p">(</span><span class="mi">700</span><span class="w"> </span><span class="mi">500</span><span class="p">))</span>
 </code></pre></div>
 
 
