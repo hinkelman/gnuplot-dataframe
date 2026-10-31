@@ -373,6 +373,67 @@
 
   (define (facet-script who o layers levels settings default-xlabel default-ylabel
                         key-title elements-of)
+    (let*-values ([(facet-values panels) (facet-panels who o layers elements-of)])
+      (let* ([n (length panels)]
+             [scales (opt o 'facet-scales 'fixed)]
+             [_ (unless (memq scales '(fixed free free-x free-y))
+                  (assertion-violation
+                   who "facet-scales must be 'fixed, 'free, 'free-x, or 'free-y" scales))]
+             [all-elements (apply append panels)]
+             [names (map (lambda (i) (format "$d~a" (+ i 1))) (iota (length all-elements)))]
+             [panel-names (split-at-lengths names (map length panels))]
+             [titles (unique-titles (map element-title all-elements))]
+             [key-entries (filter values (map key-entry all-elements titles))]
+             [key (opt o 'key (if (pair? key-entries) 'shared #f))]
+             [xlabel (opt o 'xlabel default-xlabel)]
+             [ylabel (opt o 'ylabel default-ylabel)]
+             [layout (compute-facet-layout o n key
+                                           (cons (if key-title (symbol->string key-title) "")
+                                                 (filter values titles))
+                                           xlabel ylabel)]
+             [output (opt o 'output #f)])
+        (send-script
+         (append
+          (apply append (map (lambda (name e) (datablock name (element-columns e)))
+                             names all-elements))
+          settings
+          (if (opt o 'grid #f) '("set grid") '())
+          (range-command "xrange" (opt o 'xrange #f))
+          (range-command "yrange" (opt o 'yrange #f))
+          (logscale-command (opt o 'logscale #f))
+          (shared-ranges o scales levels names all-elements
+                         (facet-layout-panel-width layout)
+                         (facet-layout-panel-height layout))
+          (opt o 'commands '())
+          (if output (output-commands output (opt o 'size #f)) '())
+          (list
+           "unset key"
+           (format "set multiplot layout ~a,~a margins ~a,~a,~a,~a spacing ~a,~a~a"
+                   (facet-layout-nrow layout) (facet-layout-ncol layout)
+                   (fmt (facet-layout-left layout)) (fmt (facet-layout-right layout))
+                   (fmt (facet-layout-bottom layout)) (fmt (facet-layout-top layout))
+                   (fmt (facet-layout-xspacing layout)) (fmt (facet-layout-yspacing layout))
+                   (let ([title (opt o 'title #f)])
+                     (if title (string-append " title " (quote-string title)) ""))))
+          ;; the shared legend and axis labels are drawn once, with the last panel
+          (apply append
+                 (map (lambda (v elements names i)
+                        (let ([last? (= i (- n 1))])
+                          (append
+                           (list (string-append "set title " (quote-string v) " offset 0,-0.5"))
+                           (if last?
+                               (facet-shared-commands layout key key-title xlabel ylabel)
+                               '())
+                           (list (plot-command names elements
+                                               (map (lambda (e) #f) elements)
+                                               (if (and last? key) key-entries '()))))))
+                      facet-values panels panel-names (iota n)))
+          (list "unset multiplot")
+          (if output '("unset output") '()))))))
+
+  ;; Returns the facet values, in order of first appearance, and a list
+  ;; with each panel's elements.
+  (define (facet-panels who o layers elements-of)
     (let* ([facet (opt o 'facet #f)]
            [faceted (filter (lambda (l) (dataframe-contains? (layer-df l) facet))
                             layers)]
@@ -382,91 +443,69 @@
                           (apply append
                                  (map (lambda (l) (map ->label ($ (layer-df l) facet)))
                                       faceted)))]
-           [pieces (map (lambda (l) (facet-pieces l facet)) layers)]
-           [panels (map (lambda (v)
-                          (filter (lambda (e) (pair? (car (element-columns e))))
-                                  (elements-of
-                                   (filter values
-                                           (map (lambda (p) (facet-layer p v)) pieces)))))
-                        facet-values)]
-           [n (length panels)]
-           [ncol (opt o 'facet-columns (exact (ceiling (sqrt n))))]
+           [pieces (map (lambda (l) (facet-pieces l facet)) layers)])
+      (values
+       facet-values
+       (map (lambda (v)
+              (filter (lambda (e) (pair? (car (element-columns e))))
+                      (elements-of
+                       (filter values (map (lambda (p) (facet-layer p v)) pieces)))))
+            facet-values))))
+
+  ;; Positions are fractions of the page ("screen" coordinates in gnuplot),
+  ;; except panel-width and panel-height, which are in pixels.
+  (define-record-type facet-layout
+    (fields nrow ncol left right bottom top xspacing yspacing
+            panel-width panel-height
+            key-x xlabel-y ylabel-x))
+
+  ;; Panel margins are fixed so that panels line up; the shared legend and
+  ;; axis labels go in the space around them. Sizes are estimated in
+  ;; pixels for gnuplot's default font, then converted to page fractions.
+  (define (compute-facet-layout o n key legend-labels xlabel ylabel)
+    (let* ([ncol (opt o 'facet-columns (exact (ceiling (sqrt n))))]
            [nrow (exact (ceiling (/ n ncol)))]
-           [scales (opt o 'facet-scales 'fixed)]
-           [_ (unless (memq scales '(fixed free free-x free-y))
-                (assertion-violation who "facet-scales must be 'fixed, 'free, 'free-x, or 'free-y"
-                                     scales))]
-           [all-elements (apply append panels)]
-           [names (map (lambda (i) (format "$d~a" (+ i 1))) (iota (length all-elements)))]
-           [panel-names (split-at-lengths names (map length panels))]
-           [titles (unique-titles (map element-title all-elements))]
-           [key-entries (filter values (map key-entry all-elements titles))]
-           [key (opt o 'key (if (pair? key-entries) 'shared #f))]
-           [xlabel (opt o 'xlabel default-xlabel)]
-           [ylabel (opt o 'ylabel default-ylabel)]
-           [output (opt o 'output #f)]
            [size (or (opt o 'size #f) '(640 480))]
-           [px (lambda (p) (/ p (inexact (car size))))]
-           [py (lambda (p) (/ p (inexact (cadr size))))]
-           ;; panel margins are fixed so that panels line up; the shared
-           ;; legend and axis labels go in the space around them
+           [width (inexact (car size))]
+           [height (inexact (cadr size))]
+           [px (lambda (p) (/ p width))]
+           [py (lambda (p) (/ p height))]
+           [legend-chars (apply max (map string-length legend-labels))]
            [left (px (if (equal? ylabel "") 60 80))]
            [bottom (py (if (equal? xlabel "") 40 60))]
            ;; room above the first row for panel titles and the plot title
            [top (- 1 (py (if (opt o 'title #f) 70 40)))]
-           [legend-chars (apply max (map string-length
-                                         (cons (if key-title (symbol->string key-title) "")
-                                               (filter values titles))))]
+           ;; legend width: sample, padding, and about 9 pixels per character
            [right (- 1 (px (if (eq? key 'shared) (+ 70 (* 9 legend-chars)) 20)))]
            ;; between panels: tic labels on one side, panel title above
            [xspacing (px 60)]
-           [yspacing (py 85)]
-           [panel-width (* (car size) (/ (- right left (* (- ncol 1) xspacing)) ncol))]
-           [panel-height (* (cadr size) (/ (- top bottom (* (- nrow 1) yspacing)) nrow))])
-      (send-script
-       (append
-        (apply append (map (lambda (name e) (datablock name (element-columns e)))
-                           names all-elements))
-        settings
-        (if (opt o 'grid #f) '("set grid") '())
-        (range-command "xrange" (opt o 'xrange #f))
-        (range-command "yrange" (opt o 'yrange #f))
-        (logscale-command (opt o 'logscale #f))
-        (shared-ranges o scales levels names all-elements panel-width panel-height)
-        (opt o 'commands '())
-        (if output (output-commands output (opt o 'size #f)) '())
-        (list
-         "unset key"
-         (format "set multiplot layout ~a,~a margins ~a,~a,~a,~a spacing ~a,~a~a"
-                 nrow ncol (fmt left) (fmt right) (fmt bottom) (fmt top)
-                 (fmt xspacing) (fmt yspacing)
-                 (let ([title (opt o 'title #f)])
-                   (if title (string-append " title " (quote-string title)) ""))))
-        (apply append
-               (map (lambda (v elements names i)
-                      (let ([last? (= i (- n 1))])
-                        (append
-                         (list (string-append "set title " (quote-string v) " offset 0,-0.5"))
-                         (if last?
-                             (append
-                              (facet-key-commands key key-title right top px)
-                              (if (equal? xlabel "")
-                                  '()
-                                  (list (format "set label 1001 ~a at screen ~a, ~a center"
-                                                (quote-string xlabel)
-                                                (fmt (/ (+ left right) 2)) (fmt (py 15)))))
-                              (if (equal? ylabel "")
-                                  '()
-                                  (list (format "set label 1002 ~a at screen ~a, ~a center rotate by 90"
-                                                (quote-string ylabel)
-                                                (fmt (px 15)) (fmt (/ (+ bottom top) 2))))))
-                             '())
-                         (list (plot-command names elements
-                                             (map (lambda (e) #f) elements)
-                                             (if (and last? key) key-entries '()))))))
-                    facet-values panels panel-names (iota n)))
-        (list "unset multiplot")
-        (if output '("unset output") '())))))
+           [yspacing (py 85)])
+      (make-facet-layout
+       nrow ncol left right bottom top xspacing yspacing
+       (* width (/ (- right left (* (- ncol 1) xspacing)) ncol))
+       (* height (/ (- top bottom (* (- nrow 1) yspacing)) nrow))
+       (+ right (px 10))
+       (py 15)
+       (px 15))))
+
+  ;; Shared legend and axis labels, centered on the panels.
+  (define (facet-shared-commands layout key key-title xlabel ylabel)
+    (let ([left (facet-layout-left layout)]
+          [right (facet-layout-right layout)]
+          [bottom (facet-layout-bottom layout)]
+          [top (facet-layout-top layout)])
+      (append
+       (facet-key-commands key key-title (facet-layout-key-x layout) top)
+       (if (equal? xlabel "")
+           '()
+           (list (format "set label 1001 ~a at screen ~a, ~a center"
+                         (quote-string xlabel)
+                         (fmt (/ (+ left right) 2)) (fmt (facet-layout-xlabel-y layout)))))
+       (if (equal? ylabel "")
+           '()
+           (list (format "set label 1002 ~a at screen ~a, ~a center rotate by 90"
+                         (quote-string ylabel)
+                         (fmt (facet-layout-ylabel-x layout)) (fmt (/ (+ bottom top) 2))))))))
 
   ;; A layer split by the facet column, as (layer . ((label . df) ...)),
   ;; or (layer . #f) if it doesn't have the facet column.
@@ -541,11 +580,11 @@
 
   ;; The shared legend sits right of the panels; a key string instead
   ;; places the legend inside the last panel.
-  (define (facet-key-commands key key-title right top px)
+  (define (facet-key-commands key key-title x top)
     (cond [(eq? key 'shared)
            (append
             (list (format "set key at screen ~a, ~a left top"
-                          (fmt (+ right (px 10))) (fmt top)))
+                          (fmt x) (fmt top)))
             (if key-title
                 (list (string-append "set key title "
                                      (quote-string (symbol->string key-title))))
