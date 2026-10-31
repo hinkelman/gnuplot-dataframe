@@ -64,6 +64,9 @@
                                        'g 'y 'group 'h)))])
   (test-assert (contains? s "$d1 << EOD\n-0.2 1 0.4\n0.8 3 0.4\nEOD\n"))
   (test-assert (contains? s "$d2 << EOD\n0.2 2 0.4\n1.2 4 0.4\nEOD\n")))
+;; rows with a missing x are skipped
+(test-assert (contains? (script (lambda () (plot-bars (make-df* (g "a" 'na "b") (y 1 2 3)) 'g 'y)))
+                        "$d1 << EOD\n0 1 0.8\nNaN 2 0.8\n1 3 0.8\nEOD\n"))
 (test-end "bars-test")
 
 ;;-------------------------------------------------------------
@@ -83,6 +86,10 @@
   (test-assert (contains? s "$d1 using (0):1:(0.6) with boxplot fs solid 0.5 border -1 lc 1 notitle, $d2 using (1):1:(0.6)")))
 (let ([s (script (lambda () (plot-boxplot df #f 'temp)))])
   (test-assert (contains? s "$d1 << EOD\n10\n12.5\n20\n21\n23\nEOD\n")))
+;; rows with a missing x are skipped
+(let ([s (script (lambda () (plot-boxplot (make-df* (g "a" "a" 'na "b") (y 1 2 3 4)) 'g 'y)))])
+  (test-assert (contains? s "set xtics ('a' 0, 'b' 1)\n"))
+  (test-assert (contains? s "$d1 << EOD\n1\n2\nEOD\n$d2 << EOD\n4\nEOD\n")))
 (test-end "boxplot-test")
 
 ;;-------------------------------------------------------------
@@ -192,6 +199,13 @@
 ;; boxplot legend entries are drawn as boxes
 (test-assert (contains? (script (lambda () (plot-boxplot fdf 'city 'temp 'group 'kind 'facet 'kind)))
                         "keyentry with boxes fs solid 0.5 border -1 lc 1 title 'x'"))
+;; a faceted layer with no rows for a panel's value is left out of that panel
+(let ([s (script (lambda () (plot-layers (layer-points fdf 'month 'temp)
+                                         (layer-lines (make-df* (month 1 2) (temp 0 1) (city "B" "B"))
+                                                      'month 'temp)
+                                         'facet 'city 'facet-scales 'free)))])
+  (test-assert (contains? s "set title 'A' offset 0,-0.5\nplot $d1 using 1:2 with points pt 7 ps 1 lc 1 notitle\n"))
+  (test-assert (contains? s "set title 'B' offset 0,-0.5\nplot $d2 using 1:2 with points pt 7 ps 1 lc 1 notitle, $d3 using 1:2 with lines lw 2 lc 1 notitle\n")))
 (test-error (script (lambda () (plot-points fdf 'month 'temp 'facet 'missing))))
 (test-error (script (lambda () (plot-points fdf 'month 'temp 'facet 'city 'facet-scales 'loose))))
 (test-error (script (lambda () (plot-layers (layer-points fdf 'month 'temp 'facet 'city)))))

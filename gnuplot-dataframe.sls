@@ -18,7 +18,8 @@
                 dataframe?
                 dataframe-dim
                 dataframe-contains?
-                dataframe-values
+                dataframe-split
+                $
                 na?
                 remove-duplicates)
           (prefix (gnuplot-pipe) gp:))
@@ -247,7 +248,8 @@
            [width (/ 0.8 k)])
       (map (lambda (g i)
              (let* ([sub (cdr g)]
-                    [pos (map (lambda (v) (+ (->x v) (dodge i k width)))
+                    ;; rows with a missing x are skipped (written as NaN)
+                    [pos (map (lambda (v) (if (na? v) v (+ (->x v) (dodge i k width))))
                               ($ sub (layer-x l)))])
                (list (list pos ($ sub (layer-y l)) (map (lambda (p) width) pos))
                      (string-append "using 1:2:3 with boxes fs solid 0.85 border -1 "
@@ -283,30 +285,36 @@
     (let* ([x (layer-x l)]
            [y (layer-y l)]
            [k (length groups)]
-           [width (/ 0.6 k)]
-           [layer-levels (if x
-                             (remove-duplicates (map ->label (remove-na ($ (layer-df l) x))))
-                             '(""))])
+           [width (/ 0.6 k)])
       (apply append
              (map (lambda (g i)
-                    (let ([sub (cdr g)])
-                      (filter
-                       values
-                       (map (lambda (level j)
-                              (let ([ys (remove-na
-                                         (if x
-                                             (select-where ($ sub y) ($ sub x)
-                                                           (lambda (v) (string=? (->label v) level)))
-                                             ($ sub y)))])
-                                (and (pair? ys)
-                                     (list
-                                      (list ys)
-                                      (format "using (~a):1:(~a) with boxplot fs solid 0.5 border -1 ~a"
-                                              (fmt (+ (index-of level levels) (dodge i k width)))
-                                              (fmt width) (color g))
-                                      ;; one key entry per group
-                                      (and (= j 0) (title g))))))
-                            layer-levels (iota (length layer-levels))))))
+                    ;; one box per category; rows with a missing x are skipped
+                    (let* ([sub (cdr g)]
+                           [boxes (if x
+                                      (map (lambda (piece)
+                                             (cons (car ($ piece x)) piece))
+                                           (dataframe-split sub x))
+                                      (list (cons "" sub)))]
+                           [boxes (filter (lambda (b) (not (na? (car b)))) boxes)]
+                           [elements
+                            (filter
+                             values
+                             (map (lambda (b)
+                                    (let ([ys (remove-na ($ (cdr b) y))])
+                                      (and (pair? ys)
+                                           (list
+                                            (list ys)
+                                            (format "using (~a):1:(~a) with boxplot fs solid 0.5 border -1 ~a"
+                                                    (fmt (+ (index-of (->label (car b)) levels)
+                                                            (dodge i k width)))
+                                                    (fmt width) (color g))
+                                            #f))))
+                                  boxes))])
+                      ;; one key entry per group
+                      (if (pair? elements)
+                          (cons (list (car (car elements)) (cadr (car elements)) (title g))
+                                (cdr elements))
+                          '())))
                   groups (iota k)))))
 
   ;;---------------------------------------------------------------------
@@ -368,11 +376,12 @@
                           (apply append
                                  (map (lambda (l) (map ->label ($ (layer-df l) facet)))
                                       faceted)))]
-           ;; layers without the facet column are drawn in every panel
+           [pieces (map (lambda (l) (facet-pieces l facet)) layers)]
            [panels (map (lambda (v)
                           (filter (lambda (e) (pair? (caar e)))
                                   (elements-of
-                                   (map (lambda (l) (facet-layer l facet v)) layers))))
+                                   (filter values
+                                           (map (lambda (p) (facet-layer p v)) pieces)))))
                         facet-values)]
            [n (length panels)]
            [ncol (opt o 'facet-columns (exact (ceiling (sqrt n))))]
@@ -453,16 +462,23 @@
         (list "unset multiplot")
         (if output '("unset output") '())))))
 
-  ;; A layer restricted to one facet value; layers without the facet
-  ;; column are unchanged.
-  (define (facet-layer l facet v)
-    (let ([df (layer-df l)])
-      (if (dataframe-contains? df facet)
-          (make-layer (layer-kind l)
-                      (subset-rows df (map (lambda (x) (string=? (->label x) v))
-                                           ($ df facet)))
-                      (layer-x l) (layer-y l) (layer-o l))
-          l)))
+  ;; A layer split by the facet column, as (layer . ((label . df) ...)),
+  ;; or (layer . #f) if it doesn't have the facet column.
+  (define (facet-pieces l facet)
+    (cons l
+          (and (dataframe-contains? (layer-df l) facet)
+               (map (lambda (df) (cons (->label (car ($ df facet))) df))
+                    (dataframe-split (layer-df l) facet)))))
+
+  ;; The layer restricted to facet value v, or #f if it has no rows for v.
+  ;; Layers without the facet column are drawn in every panel.
+  (define (facet-layer pieces v)
+    (let ([l (car pieces)])
+      (cond [(not (cdr pieces)) l]
+            [(assoc v (cdr pieces))
+             => (lambda (p)
+                  (make-layer (layer-kind l) (cdr p) (layer-x l) (layer-y l) (layer-o l)))]
+            [else #f])))
 
   ;; With fixed scales, plot every panel's data together, discarding the
   ;; output, and use the resulting axis ranges for all panels. The dumb
@@ -637,31 +653,13 @@
                   (assertion-violation who "column not in df" name)))
               names))
 
-  ;; Returns list of (label . df-subset) in order of first appearance.
+  ;; Returns list of (label . df) in order of first appearance.
   ;; Ungrouped data is a single group with label #f.
   (define (split-groups df group)
     (if (not group)
         (list (cons #f df))
-        (let* ([gvals ($ df group)]
-               [levels (remove-duplicates gvals)])
-          (map (lambda (level)
-                 (cons (->label level)
-                       (subset-rows df (map (lambda (v) (equal? v level)) gvals))))
-               levels))))
-
-  ;; A group subset is a procedure from column name to values, which is
-  ;; all the plotting code needs; $ accepts it or a dataframe.
-  (define (subset-rows df keep)
-    (lambda (name) (select-where ($ df name) keep values)))
-
-  (define ($ df name)
-    (if (procedure? df) (df name) (dataframe-values df name)))
-
-  (define (select-where vals keys pred)
-    (let loop ([vals vals] [keys keys] [acc '()])
-      (cond [(null? vals) (reverse acc)]
-            [(pred (car keys)) (loop (cdr vals) (cdr keys) (cons (car vals) acc))]
-            [else (loop (cdr vals) (cdr keys) acc)])))
+        (map (lambda (sub) (cons (->label (car ($ sub group))) sub))
+             (dataframe-split df group))))
 
   (define (split-at-lengths lst lengths)
     (if (null? lengths)
