@@ -1,0 +1,10 @@
+#!r6rs ; -*- mode: scheme; coding: utf-8 -*-
+(import (akku format manifest))
+
+(akku-package ("gnuplot-dataframe" "0.1.0")
+  (synopsis "Plot dataframes with gnuplot: points, lines, bars, histograms, and boxplots.")
+  (authors "Travis Hinkelman")
+  (license "GPL-3.0-or-later")
+  (depends ("dataframe" "^0.9.0") ("gnuplot-pipe" "^0.4.1"))
+  (depends/dev ("chez-srfi" ">=0.0.0-akku <1.0.0"))
+)

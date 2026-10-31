@@ -5,3 +5,16 @@
 *.scm~
 *.scm#*
 .#*.scm
+
+*.sls~
+*.sls#*
+.#*.sls
+
+*.sps~
+*.sps#*
+.#*.sps
+
+.akku
+*.akku
+*.akku.sig
+*.log
