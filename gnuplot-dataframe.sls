@@ -48,6 +48,12 @@
   (define-record-type layer
     (fields kind df x y o))
 
+  ;; One datablock plus the plot clause that draws it. columns is a list
+  ;; of equal-length value lists, spec is the clause after the datablock
+  ;; name (e.g., "using 1:2 with points ..."), and title is a key entry or #f.
+  (define-record-type element
+    (fields columns spec title))
+
   ;;---------------------------------------------------------------------
   ;; Layers.
 
@@ -201,8 +207,7 @@
                      '()))
            '()))))
 
-  ;; An element is one datablock plus the plot clause that draws it:
-  ;; (columns spec title), where title is a key entry or #f.
+  ;; Turn a layer into elements, one per group (and per box for boxplots).
   (define (layer-elements l levels group-labels)
     (let* ([o (layer-o l)]
            [groups (split-groups (layer-df l) (opt o 'group #f))]
@@ -238,9 +243,9 @@
                               (sort (lambda (a b) (< (car a) (car b)))
                                     (filter (lambda (r) (not (na? (car r)))) rows))
                               rows)])
-               (list (list (map car rows) (map cadr rows))
-                     (string-append "using 1:2 " style " " (color g))
-                     (title g))))
+               (make-element (list (map car rows) (map cadr rows))
+                             (string-append "using 1:2 " style " " (color g))
+                             (title g))))
            groups)))
 
   (define (bar-elements l groups ->x color title)
@@ -251,10 +256,10 @@
                     ;; rows with a missing x are skipped (written as NaN)
                     [pos (map (lambda (v) (if (na? v) v (+ (->x v) (dodge i k width))))
                               ($ sub (layer-x l)))])
-               (list (list pos ($ sub (layer-y l)) (map (lambda (p) width) pos))
-                     (string-append "using 1:2:3 with boxes fs solid 0.85 border -1 "
-                                    (color g))
-                     (title g))))
+               (make-element (list pos ($ sub (layer-y l)) (map (lambda (p) width) pos))
+                             (string-append "using 1:2:3 with boxes fs solid 0.85 border -1 "
+                                            (color g))
+                             (title g))))
            groups (iota k))))
 
   (define (histogram-elements l groups color title)
@@ -274,11 +279,11 @@
                      "fs transparent solid 0.5 border -1"
                      "fs solid 0.85 border -1")])
       (map (lambda (g)
-             (list (list (map (lambda (b) (+ lo (* width (+ b 0.5)))) (iota nbins))
-                         (bin-counts (remove-na ($ (cdr g) x)) lo width nbins)
-                         (make-list nbins width))
-                   (string-append "using 1:2:3 with boxes " fill " " (color g))
-                   (title g)))
+             (make-element (list (map (lambda (b) (+ lo (* width (+ b 0.5)))) (iota nbins))
+                                 (bin-counts (remove-na ($ (cdr g) x)) lo width nbins)
+                                 (make-list nbins width))
+                           (string-append "using 1:2:3 with boxes " fill " " (color g))
+                           (title g)))
            groups)))
 
   (define (boxplot-elements l groups levels color title)
@@ -302,7 +307,7 @@
                              (map (lambda (b)
                                     (let ([ys (remove-na ($ (cdr b) y))])
                                       (and (pair? ys)
-                                           (list
+                                           (make-element
                                             (list ys)
                                             (format "using (~a):1:(~a) with boxplot fs solid 0.5 border -1 ~a"
                                                     (fmt (+ (index-of (->label (car b)) levels)
@@ -310,10 +315,11 @@
                                                     (fmt width) (color g))
                                             #f))))
                                   boxes))])
-                      ;; one key entry per group
+                      ;; one key entry per group, on its first box
                       (if (pair? elements)
-                          (cons (list (car (car elements)) (cadr (car elements)) (title g))
-                                (cdr elements))
+                          (let ([e (car elements)])
+                            (cons (make-element (element-columns e) (element-spec e) (title g))
+                                  (cdr elements)))
                           '())))
                   groups (iota k)))))
 
@@ -325,7 +331,7 @@
   (define (run-script o settings default-xlabel default-ylabel key-title elements)
     (let* ([names (map (lambda (i) (format "$d~a" (+ i 1)))
                        (iota (length elements)))]
-           [titles (unique-titles (map caddr elements))]
+           [titles (unique-titles (map element-title elements))]
            [titled? (exists values titles)]
            [output (opt o 'output #f)])
       (send-script
@@ -342,7 +348,7 @@
         (range-command "yrange" (opt o 'yrange #f))
         (logscale-command (opt o 'logscale #f))
         (opt o 'commands '())
-        (apply append (map (lambda (name e) (datablock name (car e)))
+        (apply append (map (lambda (name e) (datablock name (element-columns e)))
                            names elements))
         (list (plot-command names elements titles '()))
         (if output '("unset output") '())))))
@@ -354,7 +360,7 @@
          "plot "
          (join (append
                 (map (lambda (name e title)
-                       (format "~a ~a ~a" name (cadr e)
+                       (format "~a ~a ~a" name (element-spec e)
                                (if title
                                    (string-append "title " (quote-string title))
                                    "notitle")))
@@ -378,7 +384,7 @@
                                       faceted)))]
            [pieces (map (lambda (l) (facet-pieces l facet)) layers)]
            [panels (map (lambda (v)
-                          (filter (lambda (e) (pair? (caar e)))
+                          (filter (lambda (e) (pair? (car (element-columns e))))
                                   (elements-of
                                    (filter values
                                            (map (lambda (p) (facet-layer p v)) pieces)))))
@@ -393,7 +399,7 @@
            [all-elements (apply append panels)]
            [names (map (lambda (i) (format "$d~a" (+ i 1))) (iota (length all-elements)))]
            [panel-names (split-at-lengths names (map length panels))]
-           [titles (unique-titles (map caddr all-elements))]
+           [titles (unique-titles (map element-title all-elements))]
            [key-entries (filter values (map key-entry all-elements titles))]
            [key (opt o 'key (if (pair? key-entries) 'shared #f))]
            [xlabel (opt o 'xlabel default-xlabel)]
@@ -419,7 +425,7 @@
            [panel-height (* (cadr size) (/ (- top bottom (* (- nrow 1) yspacing)) nrow))])
       (send-script
        (append
-        (apply append (map (lambda (name e) (datablock name (car e)))
+        (apply append (map (lambda (name e) (datablock name (element-columns e)))
                            names all-elements))
         settings
         (if (opt o 'grid #f) '("set grid") '())
@@ -527,7 +533,7 @@
   ;; Legend entry drawn without data, in the style of an element.
   (define (key-entry e title)
     (and title
-         (let* ([spec (cadr e)]
+         (let* ([spec (element-spec e)]
                 [style (substring spec (string-index spec "with ") (string-length spec))])
            (format "keyentry ~a title ~a"
                    (string-replace style "with boxplot" "with boxes")
