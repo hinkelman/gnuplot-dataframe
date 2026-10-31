@@ -452,6 +452,37 @@
                        (filter values (map (lambda (p) (facet-layer p v)) pieces)))))
             facet-values))))
 
+  ;; Facet layout sizes in pixels, estimated for gnuplot's default font.
+  ;; They are converted to fractions of the page for the actual page size.
+
+  ;; gnuplot's default page size for png, svg, and interactive windows
+  (define default-page-size '(640 480))
+
+  ;; margins around the grid of panels
+  (define left-margin-px 60)          ; y tic labels
+  (define ylabel-width-px 20)         ; plus the shared y axis label
+  (define bottom-margin-px 40)        ; x tic labels
+  (define xlabel-height-px 20)        ; plus the shared x axis label
+  (define top-margin-px 40)           ; titles of the first row of panels
+  (define title-height-px 30)         ; plus the plot title
+  (define right-margin-px 20)         ; when there is no shared legend
+
+  ;; shared legend, right of the panels
+  (define legend-gap-px 10)           ; between the panels and the legend
+  (define legend-base-width-px 70)    ; line or point sample and padding
+  (define legend-char-width-px 9)     ; per character of the longest label
+
+  ;; gaps between panels
+  (define panel-xspacing-px 60)       ; y tic labels of the panel to the right
+  (define panel-yspacing-px 85)       ; x tic labels, plus the title of the panel below
+
+  ;; distance from the page edge to the center of the shared axis labels
+  (define axis-label-offset-px 15)
+
+  ;; minimum space per tic mark, used to choose tic spacing for small panels
+  (define xtic-spacing-px 45)
+  (define ytic-spacing-px 25)
+
   ;; Positions are fractions of the page ("screen" coordinates in gnuplot),
   ;; except panel-width and panel-height, which are in pixels.
   (define-record-type facet-layout
@@ -460,33 +491,35 @@
             key-x xlabel-y ylabel-x))
 
   ;; Panel margins are fixed so that panels line up; the shared legend and
-  ;; axis labels go in the space around them. Sizes are estimated in
-  ;; pixels for gnuplot's default font, then converted to page fractions.
+  ;; axis labels go in the space around them.
   (define (compute-facet-layout o n key legend-labels xlabel ylabel)
     (let* ([ncol (opt o 'facet-columns (exact (ceiling (sqrt n))))]
            [nrow (exact (ceiling (/ n ncol)))]
-           [size (or (opt o 'size #f) '(640 480))]
+           [size (or (opt o 'size #f) default-page-size)]
            [width (inexact (car size))]
            [height (inexact (cadr size))]
            [px (lambda (p) (/ p width))]
            [py (lambda (p) (/ p height))]
            [legend-chars (apply max (map string-length legend-labels))]
-           [left (px (if (equal? ylabel "") 60 80))]
-           [bottom (py (if (equal? xlabel "") 40 60))]
-           ;; room above the first row for panel titles and the plot title
-           [top (- 1 (py (if (opt o 'title #f) 70 40)))]
-           ;; legend width: sample, padding, and about 9 pixels per character
-           [right (- 1 (px (if (eq? key 'shared) (+ 70 (* 9 legend-chars)) 20)))]
-           ;; between panels: tic labels on one side, panel title above
-           [xspacing (px 60)]
-           [yspacing (py 85)])
+           [left (px (+ left-margin-px
+                        (if (equal? ylabel "") 0 ylabel-width-px)))]
+           [bottom (py (+ bottom-margin-px
+                          (if (equal? xlabel "") 0 xlabel-height-px)))]
+           [top (- 1 (py (+ top-margin-px
+                            (if (opt o 'title #f) title-height-px 0))))]
+           [right (- 1 (px (if (eq? key 'shared)
+                               (+ legend-base-width-px
+                                  (* legend-char-width-px legend-chars))
+                               right-margin-px)))]
+           [xspacing (px panel-xspacing-px)]
+           [yspacing (py panel-yspacing-px)])
       (make-facet-layout
        nrow ncol left right bottom top xspacing yspacing
        (* width (/ (- right left (* (- ncol 1) xspacing)) ncol))
        (* height (/ (- top bottom (* (- nrow 1) yspacing)) nrow))
-       (+ right (px 10))
-       (py 15)
-       (px 15))))
+       (+ right (px legend-gap-px))
+       (py axis-label-offset-px)
+       (px axis-label-offset-px))))
 
   ;; Shared legend and axis labels, centered on the panels.
   (define (facet-shared-commands layout key key-title xlabel ylabel)
@@ -554,11 +587,11 @@
                  "_nice_step(r, n) = _nice_m(r / n / _nice_p(r / n)) * _nice_p(r / n)")
            (if fix-x?
                (append (if (opt o 'xrange #f) '() '("set xrange [GPVAL_X_MIN:GPVAL_X_MAX]"))
-                       (tics 'x (/ panel-width 45)))
+                       (tics 'x (/ panel-width xtic-spacing-px)))
                '())
            (if fix-y?
                (append (if (opt o 'yrange #f) '() '("set yrange [GPVAL_Y_MIN:GPVAL_Y_MAX]"))
-                       (tics 'y (/ panel-height 25)))
+                       (tics 'y (/ panel-height ytic-spacing-px)))
                '()))
           '())))
 
