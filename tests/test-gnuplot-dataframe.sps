@@ -36,12 +36,12 @@
   (test-assert (contains? s "set ylabel 'temp'\n"))
   (test-assert (contains? s "unset key\n"))
   (test-assert (contains? s "$d1 << EOD\n1 10\n2 12.5\n3 NaN\n1 20\n"))
-  (test-assert (contains? s "plot $d1 using 1:2 with points pt 7 ps 1 notitle\n")))
+  (test-assert (contains? s "plot $d1 using 1:2 with points pt 7 ps 1 lc 1 notitle\n")))
 (let ([s (script (lambda () (plot-lines df 'month 'temp 'group 'city 'title "It's")))])
   (test-assert (contains? s "set title 'It''s'\n"))
   (test-assert (contains? s "set key title 'city'\n"))
   (test-assert (contains? s "$d2 << EOD\n1 20\n2 21\n3 23\nEOD\n"))
-  (test-assert (contains? s "title 'A', $d2 using 1:2 with lines lw 2 title 'B''s'\n")))
+  (test-assert (contains? s "title 'A', $d2 using 1:2 with lines lw 2 lc 2 title 'B''s'\n")))
 ;; lines are sorted by x unless 'sort #f
 (let ([d (make-df* (x 3 1 2) (y 30 10 20))])
   (test-assert (contains? (script (lambda () (plot-lines d 'x 'y)))
@@ -58,13 +58,12 @@
 
 (test-begin "bars-test")
 (let ([s (script (lambda () (plot-bars df 'city 'temp)))])
-  (test-assert (contains? s "set boxwidth 0.8 absolute\n"))
+  (test-assert (contains? s "0 10 0.8\n0 12.5 0.8\n0 NaN 0.8\n1 20 0.8\n"))
   (test-assert (contains? s "set yrange [0:*]\n")))
 (let ([s (script (lambda () (plot-bars (make-df* (g "a" "a" "b" "b") (h 1 2 1 2) (y 1 2 3 4))
                                        'g 'y 'group 'h)))])
-  (test-assert (contains? s "set boxwidth 0.4 absolute\n"))
-  (test-assert (contains? s "$d1 << EOD\n-0.2 1\n0.8 3\nEOD\n"))
-  (test-assert (contains? s "$d2 << EOD\n0.2 2\n1.2 4\nEOD\n")))
+  (test-assert (contains? s "$d1 << EOD\n-0.2 1 0.4\n0.8 3 0.4\nEOD\n"))
+  (test-assert (contains? s "$d2 << EOD\n0.2 2 0.4\n1.2 4 0.4\nEOD\n")))
 (test-end "bars-test")
 
 ;;-------------------------------------------------------------
@@ -72,7 +71,7 @@
 (test-begin "histogram-test")
 (let ([s (script (lambda () (plot-histogram (make-df* (x 0 1 1 2 2 2 4)) 'x 'binwidth 1)))])
   (test-assert (contains? s "set ylabel 'Count'\n"))
-  (test-assert (contains? s "$d1 << EOD\n0.5 1\n1.5 2\n2.5 3\n3.5 1\nEOD\n")))
+  (test-assert (contains? s "$d1 << EOD\n0.5 1 1.0\n1.5 2 1.0\n2.5 3 1.0\n3.5 1 1.0\nEOD\n")))
 (test-error (script (lambda () (plot-histogram df 'city))))
 (test-end "histogram-test")
 
@@ -81,7 +80,7 @@
 (test-begin "boxplot-test")
 (let ([s (script (lambda () (plot-boxplot df 'city 'temp)))])
   (test-assert (contains? s "$d1 << EOD\n10\n12.5\nEOD\n"))
-  (test-assert (contains? s "$d1 using (0):1 with boxplot lc 1 notitle, $d2 using (1):1")))
+  (test-assert (contains? s "$d1 using (0):1:(0.6) with boxplot fs solid 0.5 border -1 lc 1 notitle, $d2 using (1):1:(0.6)")))
 (let ([s (script (lambda () (plot-boxplot df #f 'temp)))])
   (test-assert (contains? s "$d1 << EOD\n10\n12.5\n20\n21\n23\nEOD\n")))
 (test-end "boxplot-test")
@@ -104,5 +103,39 @@
 (test-error (script (lambda () (plot-points df 'month 'missing))))
 (test-error (script (lambda () (plot-points df 'month 'temp 'output "x.jpg"))))
 (test-end "options-test")
+
+;;-------------------------------------------------------------
+
+(test-begin "layers-test")
+;; same group in two layers shares colors and has one key entry per value
+(let ([s (script (lambda () (plot-layers (layer-points df 'month 'temp 'group 'city)
+                                         (layer-lines df 'month 'temp 'group 'city)
+                                         'title "Both")))])
+  (test-assert (contains? s "set title 'Both'\n"))
+  (test-assert (contains? s "set key title 'city'\n"))
+  (test-assert (contains? s "$d4 << EOD\n"))
+  (test-assert (contains? s "$d1 using 1:2 with points pt 7 ps 1 lc 1 title 'A', "))
+  (test-assert (contains? s "$d3 using 1:2 with lines lw 2 lc 1 notitle, "))
+  (test-assert (contains? s "$d4 using 1:2 with lines lw 2 lc 2 notitle\n")))
+;; ungrouped layers get a key entry from 'label, and 'color sets the color
+(let ([s (script (lambda () (plot-layers (layer-points df 'month 'temp 'label "Obs")
+                                         (layer-lines df 'month 'temp 'color "black"))))])
+  (test-assert (contains? s "set key outside right top\n"))
+  (test-assert (not (contains? s "set key title")))
+  (test-assert (contains? s "lc 1 title 'Obs', $d2 using 1:2 with lines lw 2 lc rgb 'black' notitle\n")))
+;; a categorical layer puts every layer on the same category positions
+(let* ([means (make-df* (city "B's" "A") (avg 21 11))]
+       [s (script (lambda () (plot-layers (layer-bars means 'city 'avg)
+                                          (layer-points df 'city 'temp))))])
+  (test-assert (contains? s "set xtics ('B''s' 0, 'A' 1)\n"))
+  (test-assert (contains? s "$d1 << EOD\n0 21 0.8\n1 11 0.8\nEOD\n"))
+  (test-assert (contains? s "$d2 << EOD\n1 10\n1 12.5\n1 NaN\n0 20\n"))
+  (test-assert (contains? s "set xlabel 'city'\nset ylabel 'avg'\n")))
+(test-error (script (lambda () (plot-layers (layer-histogram df 'temp)
+                                            (layer-bars df 'city 'temp)))))
+(test-error (script (lambda () (plot-layers 'title "No layers"))))
+(test-error (script (lambda () (plot-layers (layer-points df 'month 'temp 'title "x")))))
+(test-error (script (lambda () (plot-layers (layer-points df 'month 'temp) 'group 'city))))
+(test-end "layers-test")
 
 (exit (if (zero? (test-runner-fail-count (test-runner-get))) 0 1))

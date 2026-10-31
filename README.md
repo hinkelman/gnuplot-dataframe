@@ -59,11 +59,13 @@ See [examples/examples.ss](examples/examples.ss) for the code that made the imag
 |---|---|
 | ![lines](examples/img/lines.png) | ![points](examples/img/points.png) |
 | ![bars](examples/img/bars.png) | ![histogram](examples/img/histogram.png) |
-| ![boxplot](examples/img/boxplot.png) | |
+| ![boxplot](examples/img/boxplot.png) | ![layers](examples/img/layers-fit.png) |
 
 ## Plot procedures
 
 Columns are given as symbols. Options come after the columns as name/value pairs, e.g., `'group 'city 'title "Temperature"`. An unknown option name is an error.
+
+Each `plot-*` procedure draws one layer. To draw several layers on the same axes, see [Layers](#layers).
 
 | Procedure | Draws | Notes |
 |---|---|---|
@@ -82,6 +84,8 @@ Missing values (`'na`) are skipped. In `plot-lines`, a missing `y` breaks the li
 | Option | Value | Default |
 |---|---|---|
 | `'group` | column name; one series per unique value, with a legend | none |
+| `'color` | color name or `"#rrggbb"`; overrides the colors from `'group` | gnuplot's color sequence |
+| `'label` | legend entry for an ungrouped layer | none |
 | `'title` | string | none |
 | `'xlabel`, `'ylabel` | string | the column name (`"Count"` for a histogram's y) |
 | `'key` | legend position as a gnuplot string, e.g., `"top left"`, `"bottom right"`, `"outside right top"`, or `#f` to hide it | `"outside right top"` when grouped, otherwise hidden |
@@ -103,6 +107,51 @@ Missing values (`'na`) are skipped. In `plot-lines`, a missing `y` breaks the li
 | | `'sort` | `#f` to connect rows in data order | `#t` |
 | `plot-histogram` | `'bins` | number of bins | Sturges' rule, as in R's `hist` |
 | | `'binwidth` | bin width; overrides `'bins` | |
+
+## Layers
+
+`plot-layers` draws several layers on the same axes. Each `layer-*` procedure takes the same arguments as the matching `plot-*` procedure, and can use its own dataframe:
+
+| Layer | Same arguments as |
+|---|---|
+| `(layer-points df x y . opts)` | `plot-points` |
+| `(layer-lines df x y . opts)` | `plot-lines` |
+| `(layer-bars df x y . opts)` | `plot-bars` |
+| `(layer-histogram df x . opts)` | `plot-histogram` |
+| `(layer-boxplot df x y . opts)` | `plot-boxplot` |
+
+Pass the layers to `plot-layers`, followed by the plot options:
+
+```scheme
+(plot-layers (layer-points flowers 'length 'width 'group 'species)
+             (layer-lines fits 'length 'width 'group 'species)
+             'xlabel "Sepal length" 'ylabel "Sepal width")
+```
+
+Options are split between layers and the plot:
+
+- **Layer options** describe the data and how it's drawn: `'group`, `'color`, `'label`, and the options for that plot type (e.g., `'pointsize`, `'bins`).
+- **Plot options** describe the whole figure: `'title`, `'xlabel`, `'ylabel`, `'key`, `'grid`, `'xrange`, `'yrange`, `'logscale`, `'output`, `'size`, and `'commands`.
+
+Giving an option to the wrong one is an error. (The `plot-*` shortcuts accept both kinds and sort them out.)
+
+How layers combine:
+
+- Layers are drawn in order, so later layers are on top.
+- Axis labels default to the first layer's columns.
+- A group value has the same color in every layer and appears once in the legend, with the first layer's symbol. In the example above, each species' points and fitted line share a color.
+- An ungrouped layer appears in the legend only if it has a `'label`.
+- If any layer has a categorical x (bars, boxplots, or text values), every layer is placed on the same category positions. For example, points of group means can be drawn over a boxplot:
+
+```scheme
+(plot-layers (layer-boxplot flowers 'species 'length)
+             (layer-points species-means 'species 'avg
+                           'color "black" 'pointtype 9 'label "Mean"))
+```
+
+![boxplot with means](examples/img/layers-boxplot.png)
+
+A histogram has a numeric x axis, so it can't be combined with a categorical layer.
 
 ## Going beyond the options
 

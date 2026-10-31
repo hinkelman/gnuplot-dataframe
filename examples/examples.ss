@@ -59,3 +59,37 @@
 (plot-boxplot flowers 'species 'length
               'ylabel "Sepal length"
               'output "examples/img/boxplot.png")
+
+;; Layers ---------------------------------------------------------------
+
+;; least-squares line through each species, drawn over the points
+(define (fit-line df)
+  (let* ([xs ($ df 'length)]
+         [ys ($ df 'width)]
+         [mx (mean xs)]
+         [my (mean ys)]
+         [slope (/ (sum (map (lambda (x y) (* (- x mx) (- y my))) xs ys))
+                   (sum (map (lambda (x) (expt (- x mx) 2)) xs)))]
+         [x-ends (list (apply min xs) (apply max xs))])
+    (make-dataframe
+     (make-slist '(species length width)
+                 (list (list (car ($ df 'species)) (car ($ df 'species)))
+                       x-ends
+                       (map (lambda (x) (+ my (* slope (- x mx)))) x-ends))))))
+
+(define fits (dataframe-bind-all (map fit-line (dataframe-split flowers 'species))))
+
+(plot-layers (layer-points flowers 'length 'width 'group 'species)
+             (layer-lines fits 'length 'width 'group 'species)
+             'xlabel "Sepal length" 'ylabel "Sepal width"
+             'output "examples/img/layers-fit.png")
+
+(define species-means
+  (dataframe-aggregate* flowers (species) (avg (length) (mean length))))
+
+(plot-layers (layer-boxplot flowers 'species 'length)
+             (layer-points species-means 'species 'avg
+                           'color "black" 'pointtype 9 'pointsize 1.5
+                           'label "Mean")
+             'ylabel "Sepal length"
+             'output "examples/img/layers-boxplot.png")

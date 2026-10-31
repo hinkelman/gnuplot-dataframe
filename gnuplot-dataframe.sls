@@ -1,5 +1,11 @@
 (library (gnuplot-dataframe)
   (export
+   plot-layers
+   layer-points
+   layer-lines
+   layer-bars
+   layer-histogram
+   layer-boxplot
    plot-points
    plot-lines
    plot-bars
@@ -17,181 +23,284 @@
                 remove-duplicates)
           (prefix (gnuplot-pipe) gp:))
 
-  ;; Each plot-* procedure builds a gnuplot script as a list of command
-  ;; strings and sends it through a gnuplot pipe. Data are written as
-  ;; inline datablocks ($d1 << EOD ... EOD) rather than with gp:plot so
-  ;; that the script can be inspected, replotted, and saved as a file.
-  ;; Categorical values are mapped to integer positions in Scheme and
-  ;; labelled with explicit xtics, so datablocks only contain numbers.
+  ;; A plot is a list of layers plus plot-level options. Each layer-*
+  ;; procedure records a dataframe, columns, and layer options; plot-layers
+  ;; turns the layers into one gnuplot script and sends it through a
+  ;; gnuplot pipe. The plot-* procedures are shortcuts for a single layer.
+  ;;
+  ;; Data are written as inline datablocks ($d1 << EOD ... EOD) rather than
+  ;; with gp:plot so that the script can be inspected, replotted, and saved
+  ;; as a file. Categorical values are mapped to integer positions in Scheme
+  ;; and labelled with explicit xtics, so datablocks only contain numbers.
 
-  ;; When true, plot-* procedures return the gnuplot script as a string
+  ;; When true, plotting procedures return the gnuplot script as a string
   ;; instead of running gnuplot.
   (define plot-dry-run (make-parameter #f))
 
-  (define common-options
-    '(group title xlabel ylabel key grid xrange yrange logscale
-            output size commands))
+  (define plot-options
+    '(title xlabel ylabel key grid xrange yrange logscale output size commands))
+
+  (define layer-options '(group color label))
+
+  ;; kind is one of points, lines, bars, histogram, boxplot; o is an alist
+  (define-record-type layer
+    (fields kind df x y o))
 
   ;;---------------------------------------------------------------------
-  ;; Public procedures.
+  ;; Layers.
 
-  (define (plot-points df x y . opts)
-    (let* ([who "(plot-points df x y . opts)"]
-           [o (parse-options who opts '(pointsize pointtype))]
-           [style (format "with points pt ~a ps ~a"
-                          (opt o 'pointtype 7) (opt o 'pointsize 1))])
-      (xy-plot who df x y o style #f)))
+  (define (layer-points df x y . opts)
+    (new-layer "(layer-points df x y . opts)" 'points df x y opts
+               '(pointsize pointtype)))
 
-  (define (plot-lines df x y . opts)
-    (let* ([who "(plot-lines df x y . opts)"]
-           [o (parse-options who opts '(points linewidth sort))]
-           [style (format "with ~a lw ~a~a"
-                          (if (opt o 'points #f) "linespoints" "lines")
-                          (opt o 'linewidth 2)
-                          (if (opt o 'points #f) " pt 7" ""))])
-      (xy-plot who df x y o style (opt o 'sort #t))))
+  (define (layer-lines df x y . opts)
+    (new-layer "(layer-lines df x y . opts)" 'lines df x y opts
+               '(points linewidth sort)))
 
-  (define (plot-bars df x y . opts)
-    (let* ([who "(plot-bars df x y . opts)"]
-           [o (parse-options who opts '())])
-      (check-columns who df (list x y (opt o 'group #f)))
-      (let* ([levels (map ->label (remove-duplicates ($ df x)))]
-             [groups (split-groups df (opt o 'group #f))]
-             [k (length groups)]
-             [width (/ 0.8 k)]
-             [ys (remove-na ($ df y))])
-        (run-script
-         o
-         (append
-          (list "set style fill solid 0.85 border -1"
-                (format "set boxwidth ~a absolute" (fmt width))
-                "set offsets 0, 0, graph 0.05, 0")
-          (category-xtics levels)
-          ;; bars should start from zero, which autoscaling does not ensure
-          (if (and (not (opt o 'yrange #f)) (for-all (lambda (v) (and (real? v) (nonnegative? v))) ys))
-              '("set yrange [0:*]")
-              '()))
-         (symbol->string x) (symbol->string y)
-         (map (lambda (g i)
-                (let* ([sub (cdr g)]
-                       [pos (map (lambda (v) (+ (index-of (->label v) levels)
-                                                (dodge i k width)))
-                                 ($ sub x))])
-                  (make-layer (list pos ($ sub y))
-                              (format "using 1:2 with boxes lc ~a" (+ i 1))
-                              (car g))))
-              groups (iota k))))))
+  (define (layer-bars df x y . opts)
+    (new-layer "(layer-bars df x y . opts)" 'bars df x y opts '()))
 
-  (define (plot-histogram df x . opts)
-    (let* ([who "(plot-histogram df x . opts)"]
-           [o (parse-options who opts '(bins binwidth))])
-      (check-columns who df (list x (opt o 'group #f)))
-      (let* ([vals (remove-na ($ df x))]
-             [_ (unless (and (pair? vals) (for-all real? vals))
-                  (assertion-violation who "x must be a numeric column"))]
-             [lo (apply min vals)]
-             [hi (apply max vals)]
-             [width (inexact
-                     (or (opt o 'binwidth #f)
-                         (if (= lo hi)
-                             1
-                             (/ (- hi lo)
-                                (opt o 'bins (sturges (length vals)))))))]
-             [nbins (max 1 (exact (ceiling (/ (- hi lo) width))))]
-             [groups (split-groups df (opt o 'group #f))])
-        (run-script
-         o
-         (list (if (> (length groups) 1)
-                   "set style fill transparent solid 0.5 border -1"
-                   "set style fill solid 0.85 border -1")
-               (format "set boxwidth ~a absolute" (fmt width))
-               "set offsets 0, 0, graph 0.05, 0"
-               "set yrange [0:*]")
-         (symbol->string x) "Count"
-         (map (lambda (g i)
-                (let ([counts (bin-counts (remove-na ($ (cdr g) x))
-                                          lo width nbins)])
-                  (make-layer (list (map (lambda (b) (+ lo (* width (+ b 0.5))))
-                                         (iota nbins))
-                                    counts)
-                              (format "using 1:2 with boxes lc ~a" (+ i 1))
-                              (car g))))
-              groups (iota (length groups)))))))
+  (define (layer-histogram df x . opts)
+    (let ([who "(layer-histogram df x . opts)"])
+      (let ([l (new-layer who 'histogram df x #f opts '(bins binwidth))])
+        (let ([vals (remove-na ($ df x))])
+          (unless (and (pair? vals) (for-all real? vals))
+            (assertion-violation who "x must be a numeric column" x)))
+        l)))
 
   ;; x may be #f for a single box of all y values
-  (define (plot-boxplot df x y . opts)
-    (let* ([who "(plot-boxplot df x y . opts)"]
-           [o (parse-options who opts '())])
+  (define (layer-boxplot df x y . opts)
+    (new-layer "(layer-boxplot df x y . opts)" 'boxplot df x y opts '()))
+
+  (define (new-layer who kind df x y opts extra)
+    (let ([o (parse-options who opts (append layer-options extra))])
       (check-columns who df (list x y (opt o 'group #f)))
-      (let* ([levels (if x (map ->label (remove-duplicates ($ df x))) '(""))]
-             [groups (split-groups df (opt o 'group #f))]
-             [k (length groups)]
-             [width (/ 0.6 k)])
-        (run-script
-         o
-         (append
-          (list "set style fill solid 0.5 border -1"
-                "set style boxplot outliers pointtype 7"
-                (format "set boxwidth ~a absolute" (fmt width)))
-          (if x (category-xtics levels) '("set xtics ('' 0)" "set xrange [-1:1]")))
-         (if x (symbol->string x) "") (symbol->string y)
-         (apply append
-                (map (lambda (g i)
-                       (let ([sub (cdr g)])
-                         (filter
-                          values
-                          (map (lambda (level j)
-                                 (let ([ys (remove-na
-                                            (if x
-                                                (select-where ($ sub y) ($ sub x)
-                                                              (lambda (v) (string=? (->label v) level)))
-                                                ($ sub y)))])
-                                   (and (pair? ys)
-                                        (make-layer
-                                         (list ys)
-                                         (format "using (~a):1 with boxplot lc ~a"
-                                                 (fmt (+ j (dodge i k width))) (+ i 1))
-                                         ;; one key entry per group
-                                         (and (= j 0) (car g))))))
-                               levels (iota (length levels))))))
-                     groups (iota k)))))))
+      (make-layer kind df x y o)))
 
   ;;---------------------------------------------------------------------
-  ;; Shared plot construction.
+  ;; Single-layer shortcuts. Options are split between the layer and plot.
 
-  ;; A layer is one datablock plus the plot clause that draws it.
-  (define (make-layer columns spec title)
-    (list columns spec title))
+  (define (plot-points df x y . opts)
+    (shortcut layer-points (list df x y) opts))
 
-  (define (xy-plot who df x y o style sort?)
-    (check-columns who df (list x y (opt o 'group #f)))
-    (let* ([xvals ($ df x)]
-           [categorical? (not (for-all real? (remove-na xvals)))]
-           [levels (and categorical? (map ->label (remove-duplicates xvals)))]
-           [->x (if categorical?
+  (define (plot-lines df x y . opts)
+    (shortcut layer-lines (list df x y) opts))
+
+  (define (plot-bars df x y . opts)
+    (shortcut layer-bars (list df x y) opts))
+
+  (define (plot-histogram df x . opts)
+    (shortcut layer-histogram (list df x) opts))
+
+  (define (plot-boxplot df x y . opts)
+    (shortcut layer-boxplot (list df x y) opts))
+
+  (define (shortcut make args opts)
+    (let loop ([opts opts] [layer-opts '()] [plot-opts '()])
+      (cond [(or (null? opts) (null? (cdr opts)))
+             ;; a dangling option name is left for parse-options to report
+             (apply plot-layers
+                    (apply make (append args (reverse layer-opts) opts))
+                    (reverse plot-opts))]
+            [(memq (car opts) plot-options)
+             (loop (cddr opts) layer-opts
+                   (cons* (cadr opts) (car opts) plot-opts))]
+            [else
+             (loop (cddr opts) (cons* (cadr opts) (car opts) layer-opts)
+                   plot-opts)])))
+
+  ;;---------------------------------------------------------------------
+  ;; Combining layers.
+
+  ;; (plot-layers layer1 layer2 ... 'option value ...)
+  (define (plot-layers . args)
+    (let* ([who "(plot-layers layer ... . opts)"]
+           [layers (take-while layer? args)]
+           [o (parse-options who (list-tail args (length layers)) plot-options)])
+      (when (null? layers)
+        (assertion-violation who "no layers given"))
+      (let* ([levels (category-levels who layers)]
+             [group-labels (remove-duplicates
+                            (apply append (map layer-group-labels layers)))]
+             [group-names (remove-duplicates
+                           (filter values (map (lambda (l) (opt (layer-o l) 'group #f))
+                                               layers)))]
+             [elements (apply append
+                              (map (lambda (l) (layer-elements l levels group-labels))
+                                   layers))]
+             [first (car layers)])
+        (run-script
+         o
+         (layer-settings layers levels)
+         (if (layer-x first) (symbol->string (layer-x first)) "")
+         (if (layer-y first) (symbol->string (layer-y first)) "Count")
+         (and (= (length group-names) 1) (car group-names))
+         elements))))
+
+  ;; Shared x positions for categorical layers, or #f if all x are numeric.
+  ;; If any layer is categorical, the x values of all layers are mapped
+  ;; through the same levels so that, e.g., a line can be drawn over bars.
+  (define (category-levels who layers)
+    (and (exists layer-categorical? layers)
+         (begin
+           (when (exists (lambda (l) (eq? (layer-kind l) 'histogram)) layers)
+             (assertion-violation
+              who "a histogram can't be combined with a categorical x axis"))
+           (remove-duplicates
+            (apply append
+                   (map (lambda (l)
+                          (if (layer-x l)
+                              (map ->label (remove-na ($ (layer-df l) (layer-x l))))
+                              '("")))
+                        layers))))))
+
+  (define (layer-categorical? l)
+    (or (memq (layer-kind l) '(bars boxplot))
+        (not (for-all real? (remove-na ($ (layer-df l) (layer-x l)))))))
+
+  (define (layer-group-labels l)
+    (map car (split-groups (layer-df l) (opt (layer-o l) 'group #f))))
+
+  ;; Global settings needed by the kinds of layers present.
+  (define (layer-settings layers levels)
+    (let ([kinds (map layer-kind layers)])
+      (append
+       (if levels (category-xtics levels) '())
+       (if (memq 'boxplot kinds)
+           '("set style boxplot outliers pointtype 7")
+           '())
+       (if (or (memq 'bars kinds) (memq 'histogram kinds))
+           ;; leave room above the tallest bar, and start bars from zero
+           ;; when nothing is negative, which autoscaling does not ensure
+           (cons "set offsets 0, 0, graph 0.05, 0"
+                 (if (for-all (lambda (l)
+                                (for-all (lambda (v) (and (real? v) (nonnegative? v)))
+                                         (if (layer-y l)
+                                             (remove-na ($ (layer-df l) (layer-y l)))
+                                             '())))
+                              layers)
+                     '("set yrange [0:*]")
+                     '()))
+           '()))))
+
+  ;; An element is one datablock plus the plot clause that draws it:
+  ;; (columns spec title), where title is a key entry or #f.
+  (define (layer-elements l levels group-labels)
+    (let* ([o (layer-o l)]
+           [groups (split-groups (layer-df l) (opt o 'group #f))]
+           [->x (if levels
                     (lambda (v) (if (na? v) v (index-of (->label v) levels)))
-                    values)])
-      (run-script
-       o
-       (if categorical? (category-xtics levels) '())
-       (symbol->string x) (symbol->string y)
-       (map (lambda (g)
-              (let* ([rows (map list (map ->x ($ (cdr g) x)) ($ (cdr g) y))]
-                     [rows (if sort?
-                               (sort (lambda (a b) (< (car a) (car b)))
-                                     (filter (lambda (r) (not (na? (car r)))) rows))
-                               rows)])
-                (make-layer (list (map car rows) (map cadr rows))
-                            (string-append "using 1:2 " style)
-                            (car g))))
-            (split-groups df (opt o 'group #f))))))
+                    values)]
+           [color (lambda (g)
+                    (let ([c (opt o 'color #f)])
+                      (if c
+                          (string-append "lc rgb " (quote-string c))
+                          (format "lc ~a" (+ 1 (or (index-of (car g) group-labels) 0))))))]
+           [title (lambda (g) (or (car g) (opt o 'label #f)))])
+      (case (layer-kind l)
+        [(points lines) (xy-elements l groups ->x color title)]
+        [(bars) (bar-elements l groups ->x color title)]
+        [(histogram) (histogram-elements l groups color title)]
+        [(boxplot) (boxplot-elements l groups levels color title)])))
 
-  ;; Assemble the full script: output, plot-specific settings, common
-  ;; settings, user commands, datablocks, and the plot command.
-  (define (run-script o settings default-xlabel default-ylabel layers)
-    (let* ([grouped? (opt o 'group #f)]
-           [names (map (lambda (i) (format "$d~a" (+ i 1)))
-                       (iota (length layers)))]
+  (define (xy-elements l groups ->x color title)
+    (let* ([o (layer-o l)]
+           [lines? (eq? (layer-kind l) 'lines)]
+           [style (if lines?
+                      (format "with ~a lw ~a~a"
+                              (if (opt o 'points #f) "linespoints" "lines")
+                              (opt o 'linewidth 2)
+                              (if (opt o 'points #f) " pt 7" ""))
+                      (format "with points pt ~a ps ~a"
+                              (opt o 'pointtype 7) (opt o 'pointsize 1)))])
+      (map (lambda (g)
+             (let* ([sub (cdr g)]
+                    [rows (map list (map ->x ($ sub (layer-x l))) ($ sub (layer-y l)))]
+                    [rows (if (and lines? (opt o 'sort #t))
+                              (sort (lambda (a b) (< (car a) (car b)))
+                                    (filter (lambda (r) (not (na? (car r)))) rows))
+                              rows)])
+               (list (list (map car rows) (map cadr rows))
+                     (string-append "using 1:2 " style " " (color g))
+                     (title g))))
+           groups)))
+
+  (define (bar-elements l groups ->x color title)
+    (let* ([k (length groups)]
+           [width (/ 0.8 k)])
+      (map (lambda (g i)
+             (let* ([sub (cdr g)]
+                    [pos (map (lambda (v) (+ (->x v) (dodge i k width)))
+                              ($ sub (layer-x l)))])
+               (list (list pos ($ sub (layer-y l)) (map (lambda (p) width) pos))
+                     (string-append "using 1:2:3 with boxes fs solid 0.85 border -1 "
+                                    (color g))
+                     (title g))))
+           groups (iota k))))
+
+  (define (histogram-elements l groups color title)
+    (let* ([o (layer-o l)]
+           [x (layer-x l)]
+           [vals (remove-na ($ (layer-df l) x))]
+           [lo (apply min vals)]
+           [hi (apply max vals)]
+           [width (inexact
+                   (or (opt o 'binwidth #f)
+                       (if (= lo hi)
+                           1
+                           (/ (- hi lo) (opt o 'bins (sturges (length vals)))))))]
+           [nbins (max 1 (exact (ceiling (/ (- hi lo) width))))]
+           [fill (if (> (length groups) 1)
+                     "fs transparent solid 0.5 border -1"
+                     "fs solid 0.85 border -1")])
+      (map (lambda (g)
+             (list (list (map (lambda (b) (+ lo (* width (+ b 0.5)))) (iota nbins))
+                         (bin-counts (remove-na ($ (cdr g) x)) lo width nbins)
+                         (make-list nbins width))
+                   (string-append "using 1:2:3 with boxes " fill " " (color g))
+                   (title g)))
+           groups)))
+
+  (define (boxplot-elements l groups levels color title)
+    (let* ([x (layer-x l)]
+           [y (layer-y l)]
+           [k (length groups)]
+           [width (/ 0.6 k)]
+           [layer-levels (if x
+                             (remove-duplicates (map ->label (remove-na ($ (layer-df l) x))))
+                             '(""))])
+      (apply append
+             (map (lambda (g i)
+                    (let ([sub (cdr g)])
+                      (filter
+                       values
+                       (map (lambda (level j)
+                              (let ([ys (remove-na
+                                         (if x
+                                             (select-where ($ sub y) ($ sub x)
+                                                           (lambda (v) (string=? (->label v) level)))
+                                             ($ sub y)))])
+                                (and (pair? ys)
+                                     (list
+                                      (list ys)
+                                      (format "using (~a):1:(~a) with boxplot fs solid 0.5 border -1 ~a"
+                                              (fmt (+ (index-of level levels) (dodge i k width)))
+                                              (fmt width) (color g))
+                                      ;; one key entry per group
+                                      (and (= j 0) (title g))))))
+                            layer-levels (iota (length layer-levels))))))
+                  groups (iota k)))))
+
+  ;;---------------------------------------------------------------------
+  ;; Script assembly.
+
+  ;; Assemble the full script: output, layer settings, plot options,
+  ;; user commands, datablocks, and the plot command.
+  (define (run-script o settings default-xlabel default-ylabel key-title elements)
+    (let* ([names (map (lambda (i) (format "$d~a" (+ i 1)))
+                       (iota (length elements)))]
+           [titles (unique-titles (map caddr elements))]
+           [titled? (exists values titles)]
            [output (opt o 'output #f)])
       (send-script
        (append
@@ -200,27 +309,34 @@
         (label-command "title" (opt o 'title #f))
         (label-command "xlabel" (opt o 'xlabel default-xlabel))
         (label-command "ylabel" (opt o 'ylabel default-ylabel))
-        (key-commands (opt o 'key (if grouped? "outside right top" #f))
-                      grouped?)
+        (key-commands (opt o 'key (if titled? "outside right top" #f))
+                      key-title)
         (if (opt o 'grid #f) '("set grid") '())
         (range-command "xrange" (opt o 'xrange #f))
         (range-command "yrange" (opt o 'yrange #f))
         (logscale-command (opt o 'logscale #f))
         (opt o 'commands '())
-        (apply append (map (lambda (name layer) (datablock name (car layer)))
-                           names layers))
+        (apply append (map (lambda (name e) (datablock name (car e)))
+                           names elements))
         (list
          (string-append
           "plot "
-          (join (map (lambda (name layer)
-                       (let ([title (caddr layer)])
-                         (format "~a ~a ~a" name (cadr layer)
-                                 (if (and grouped? title)
-                                     (string-append "title " (quote-string title))
-                                     "notitle"))))
-                     names layers)
+          (join (map (lambda (name e title)
+                       (format "~a ~a ~a" name (cadr e)
+                               (if title
+                                   (string-append "title " (quote-string title))
+                                   "notitle")))
+                     names elements titles)
                 ", ")))
         (if output '("unset output") '())))))
+
+  ;; A label gets one key entry, e.g., when points and lines share a group.
+  (define (unique-titles titles)
+    (let loop ([titles titles] [seen '()] [acc '()])
+      (cond [(null? titles) (reverse acc)]
+            [(and (car titles) (not (member (car titles) seen)))
+             (loop (cdr titles) (cons (car titles) seen) (cons (car titles) acc))]
+            [else (loop (cdr titles) seen (cons #f acc))])))
 
   (define (send-script script)
     (if (plot-dry-run)
@@ -268,13 +384,13 @@
         (list (format "set ~a ~a" name (quote-string value)))
         '()))
 
-  (define (key-commands key grouped?)
+  (define (key-commands key key-title)
     (cond [(not key) '("unset key")]
           [(string? key)
            (cons (string-append "set key " key)
-                 (if grouped?
+                 (if key-title
                      (list (string-append "set key title "
-                                          (quote-string (symbol->string grouped?))))
+                                          (quote-string (symbol->string key-title))))
                      '()))]
           [else (assertion-violation "key" "key must be a string or #f" key)]))
 
@@ -295,12 +411,12 @@
   ;;---------------------------------------------------------------------
   ;; Options are passed as a property list, e.g., 'group 'city 'title "Temp".
 
-  (define (parse-options who opts extra)
+  (define (parse-options who opts allowed)
     (let loop ([opts opts] [acc '()])
       (cond [(null? opts) acc]
             [(null? (cdr opts))
              (assertion-violation who "options must be given as name/value pairs" opts)]
-            [(not (memq (car opts) (append common-options extra)))
+            [(not (memq (car opts) allowed))
              (assertion-violation who "unknown option" (car opts))]
             [else (loop (cddr opts) (cons (cons (car opts) (cadr opts)) acc))])))
 
@@ -346,6 +462,11 @@
       (cond [(null? vals) (reverse acc)]
             [(pred (car keys)) (loop (cdr vals) (cdr keys) (cons (car vals) acc))]
             [else (loop (cdr vals) (cdr keys) acc)])))
+
+  (define (take-while pred lst)
+    (if (and (pair? lst) (pred (car lst)))
+        (cons (car lst) (take-while pred (cdr lst)))
+        '()))
 
   (define (bin-counts vals lo width nbins)
     (let ([counts (make-vector nbins 0)])
