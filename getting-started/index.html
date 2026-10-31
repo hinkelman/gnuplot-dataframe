@@ -715,18 +715,23 @@
 <h1 id="installation-import">Installation &amp; Import<a class="headerlink" href="#installation-import" title="Permanent link">&para;</a></h1>
 <h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
 <p><a href="http://gnuplot.info">gnuplot</a> 5.2.6 or later. Tested with gnuplot 6.0 and Chez Scheme 10.3.</p>
-<p><code>gnuplot-dataframe</code> depends on <a href="https://hinkelman.github.io/dataframe">dataframe</a> and <a href="https://github.com/hinkelman/gnuplot-pipe">gnuplot-pipe</a>, which Akku installs automatically.</p>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>$ akku install gnuplot-dataframe
+<p>Clone this repository and its dependencies, <a href="https://github.com/hinkelman/dataframe">dataframe</a> and <a href="https://github.com/hinkelman/gnuplot-pipe">gnuplot-pipe</a>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>$ git clone https://github.com/hinkelman/gnuplot-dataframe
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>$ git clone https://github.com/hinkelman/dataframe
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>$ git clone https://github.com/hinkelman/gnuplot-pipe
 </code></pre></div>
-<p>For more information on getting started with <a href="https://akkuscm.org/">Akku</a>, see this <a href="https://www.travishinkelman.com/posts/getting-started-with-akku-package-manager-for-scheme/">blog post</a>.</p>
+<p>Then add the three directories to Chez Scheme's library path, e.g., in your shell profile:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>$ export CHEZSCHEMELIBDIRS=&quot;/path/to/gnuplot-dataframe:/path/to/dataframe:/path/to/gnuplot-pipe:$CHEZSCHEMELIBDIRS&quot;
+</code></pre></div>
+<p>Those libraries have dependencies of their own, which also need to be on the library path: gnuplot-pipe uses SRFI 1 and SRFI 13 (e.g., from <a href="https://github.com/arcfide/chez-srfi">chez-srfi</a>), and dataframe uses <code>(slib format)</code>.</p>
 <h2 id="import">Import<a class="headerlink" href="#import" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">(</span><span class="k">import</span><span class="w"> </span><span class="p">(</span><span class="nf">dataframe</span><span class="p">)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">        </span><span class="p">(</span><span class="nf">gnuplot-dataframe</span><span class="p">))</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">(</span><span class="k">import</span><span class="w"> </span><span class="p">(</span><span class="nf">dataframe</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">        </span><span class="p">(</span><span class="nf">gnuplot-dataframe</span><span class="p">))</span>
 </code></pre></div>
 <h2 id="windows-and-files">Windows and files<a class="headerlink" href="#windows-and-files" title="Permanent link">&para;</a></h2>
 <p>By default, each plot opens in a new gnuplot window. To write a file instead, pass <code>'output</code> with a file name ending in <code>.png</code>, <code>.svg</code>, <code>.pdf</code>, or <code>.txt</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">(</span><span class="nf">plot-points</span><span class="w"> </span><span class="nv">df</span><span class="w"> </span><span class="ss">&#39;x</span><span class="w"> </span><span class="ss">&#39;y</span><span class="w"> </span><span class="ss">&#39;output</span><span class="w"> </span><span class="s">&quot;scatter.png&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">(</span><span class="nf">plot-points</span><span class="w"> </span><span class="nv">df</span><span class="w"> </span><span class="ss">&#39;x</span><span class="w"> </span><span class="ss">&#39;y</span><span class="w"> </span><span class="ss">&#39;output</span><span class="w"> </span><span class="s">&quot;scatter.png&quot;</span><span class="p">)</span>
 </code></pre></div>
 <p>The <code>.txt</code> format draws the plot as ASCII art, which is handy in a terminal or over SSH.</p>
 
