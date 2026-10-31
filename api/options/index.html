@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Plot dataframes with gnuplot from Chez Scheme. Points, lines, bars, histograms, and boxplots, with grouping and layering.">
+        <meta name="description" content="Plot dataframes with gnuplot from Chez Scheme. Points, lines, bars, histograms, and boxplots, with grouping, layering, and faceting.">
       
       
       
@@ -569,6 +569,28 @@
   
   
     <li class="md-nav__item">
+      <a href="../facets/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Facets
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../scripts/" class="md-nav__link">
         
   
@@ -804,6 +826,21 @@
 <td><code>'commands</code></td>
 <td>list of extra gnuplot commands; see <a href="../scripts/">gnuplot Scripts</a></td>
 <td><code>'()</code></td>
+</tr>
+<tr>
+<td><code>'facet</code></td>
+<td>column name; one panel per unique value; see <a href="../facets/">Facets</a></td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>'facet-columns</code></td>
+<td>number of columns of panels</td>
+<td>about square</td>
+</tr>
+<tr>
+<td><code>'facet-scales</code></td>
+<td><code>'fixed</code>, <code>'free</code>, <code>'free-x</code>, or <code>'free-y</code></td>
+<td><code>'fixed</code></td>
 </tr>
 </tbody>
 </table>

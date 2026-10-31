@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Plot dataframes with gnuplot from Chez Scheme. Points, lines, bars, histograms, and boxplots, with grouping and layering.">
+        <meta name="description" content="Plot dataframes with gnuplot from Chez Scheme. Points, lines, bars, histograms, and boxplots, with grouping, layering, and faceting.">
       
       
       
@@ -571,6 +571,28 @@
   
   
     <li class="md-nav__item">
+      <a href="api/facets/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Facets
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="api/scripts/" class="md-nav__link">
         
   
@@ -667,7 +689,7 @@
 
 <h1 id="scheme-gnuplot-dataframe-library">Scheme gnuplot-dataframe Library<a class="headerlink" href="#scheme-gnuplot-dataframe-library" title="Permanent link">&para;</a></h1>
 <p>Plot <a href="https://hinkelman.github.io/dataframe">dataframes</a> with <a href="http://gnuplot.info">gnuplot</a> from Chez Scheme.</p>
-<p>The API is loosely modeled on base R plotting: one procedure per plot type, column names for the data, and options for labels, legends, and output. Like <code>ggplot2</code>, a <code>'group</code> column splits the data into colored series with a legend, and layers can be combined on the same axes.</p>
+<p>The API is loosely modeled on base R plotting: one procedure per plot type, column names for the data, and options for labels, legends, and output. Like <code>ggplot2</code>, a <code>'group</code> column splits the data into colored series with a legend, layers can be combined on the same axes, and a <code>'facet</code> column splits a plot into panels.</p>
 <p><a href="https://github.com/hinkelman/gnuplot-dataframe">GitHub</a> · <a href="https://hinkelman.github.io/dataframe">dataframe</a> · <a href="https://github.com/hinkelman/gnuplot-pipe">gnuplot-pipe</a></p>
 <hr />
 <h2 id="quick-example">Quick Example<a class="headerlink" href="#quick-example" title="Permanent link">&para;</a></h2>
@@ -710,6 +732,10 @@
 <td><img alt="boxplot" src="img/boxplot.png" /></td>
 <td><img alt="layers" src="img/layers-fit.png" /></td>
 </tr>
+<tr>
+<td><img alt="facets" src="img/facet-layers.png" /></td>
+<td><img alt="faceted histogram" src="img/facet-histogram.png" /></td>
+</tr>
 </tbody>
 </table>
 <h2 id="api-overview">API Overview<a class="headerlink" href="#api-overview" title="Permanent link">&para;</a></h2>
@@ -732,6 +758,10 @@
 <tr>
 <td><a href="api/layers/">Layers</a></td>
 <td><code>plot-layers</code>, <code>layer-points</code>, <code>layer-lines</code>, <code>layer-bars</code>, <code>layer-histogram</code>, <code>layer-boxplot</code></td>
+</tr>
+<tr>
+<td><a href="api/facets/">Facets</a></td>
+<td><code>'facet</code>, <code>'facet-columns</code>, <code>'facet-scales</code></td>
 </tr>
 <tr>
 <td><a href="api/scripts/">gnuplot Scripts</a></td>
