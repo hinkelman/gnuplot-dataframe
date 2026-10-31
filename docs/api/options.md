@@ -56,6 +56,9 @@ These describe the whole figure.
 | `'output` | file name ending in `.png`, `.svg`, `.pdf`, or `.txt` (ASCII art) | open a window |
 | `'size` | `'(width height)` in pixels (100 pixels per inch for pdf) | gnuplot's default |
 | `'commands` | list of extra gnuplot commands; see [gnuplot Scripts](scripts.md) | `'()` |
+| `'facet` | column name; one panel per unique value; see [Facets](facets.md) | none |
+| `'facet-columns` | number of columns of panels | about square |
+| `'facet-scales` | `'fixed`, `'free`, `'free-x`, or `'free-y` | `'fixed` |
 
 Some useful values for `'key` are `"top left"`, `"bottom right"`, `"outside right top"`, `"outside bottom center horizontal"`, and `"top left box"`. Any position accepted by gnuplot's `set key` works.
 

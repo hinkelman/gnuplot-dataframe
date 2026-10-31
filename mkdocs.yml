@@ -1,5 +1,5 @@
 site_name: Scheme gnuplot-dataframe Library
-site_description: Plot dataframes with gnuplot from Chez Scheme. Points, lines, bars, histograms, and boxplots, with grouping and layering.
+site_description: Plot dataframes with gnuplot from Chez Scheme. Points, lines, bars, histograms, and boxplots, with grouping, layering, and faceting.
 site_url: https://hinkelman.github.io/gnuplot-dataframe
 repo_url: https://github.com/hinkelman/gnuplot-dataframe
 repo_name: hinkelman/gnuplot-dataframe
@@ -25,6 +25,7 @@ nav:
     - Plots: api/plots.md
     - Options: api/options.md
     - Layers: api/layers.md
+    - Facets: api/facets.md
     - gnuplot Scripts: api/scripts.md
 
 markdown_extensions:

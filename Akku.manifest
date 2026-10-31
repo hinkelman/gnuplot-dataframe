@@ -2,7 +2,7 @@
 (import (akku format manifest))
 
 (akku-package ("gnuplot-dataframe" "0.1.0")
-  (synopsis "Plot dataframes with gnuplot: points, lines, bars, histograms, and boxplots.")
+  (synopsis "Plot dataframes with gnuplot: points, lines, bars, histograms, and boxplots, with layers and facets.")
   (authors "Travis Hinkelman")
   (license "GPL-3.0-or-later")
   (depends ("dataframe" "^0.9.0") ("gnuplot-pipe" "^0.4.1"))

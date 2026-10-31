@@ -38,7 +38,8 @@
   (define plot-dry-run (make-parameter #f))
 
   (define plot-options
-    '(title xlabel ylabel key grid xrange yrange logscale output size commands))
+    '(title xlabel ylabel key grid xrange yrange logscale output size commands
+            facet facet-columns facet-scales))
 
   (define layer-options '(group color label))
 
@@ -119,23 +120,39 @@
            [o (parse-options who (list-tail args (length layers)) plot-options)])
       (when (null? layers)
         (assertion-violation who "no layers given"))
-      (let* ([levels (category-levels who layers)]
+      ;; levels, group colors, and histogram bins come from the full data
+      ;; so that they are the same in every facet panel
+      (let* ([layers (map with-bin-range layers)]
+             [levels (category-levels who layers)]
              [group-labels (remove-duplicates
                             (apply append (map layer-group-labels layers)))]
              [group-names (remove-duplicates
                            (filter values (map (lambda (l) (opt (layer-o l) 'group #f))
                                                layers)))]
-             [elements (apply append
-                              (map (lambda (l) (layer-elements l levels group-labels))
-                                   layers))]
-             [first (car layers)])
-        (run-script
-         o
-         (layer-settings layers levels)
-         (if (layer-x first) (symbol->string (layer-x first)) "")
-         (if (layer-y first) (symbol->string (layer-y first)) "Count")
-         (and (= (length group-names) 1) (car group-names))
-         elements))))
+             [key-title (and (= (length group-names) 1) (car group-names))]
+             [settings (layer-settings layers levels)]
+             [first (car layers)]
+             [xlabel (if (layer-x first) (symbol->string (layer-x first)) "")]
+             [ylabel (if (layer-y first) (symbol->string (layer-y first)) "Count")]
+             [elements-of (lambda (layers)
+                            (apply append
+                                   (map (lambda (l) (layer-elements l levels group-labels))
+                                        layers)))])
+        (if (opt o 'facet #f)
+            (facet-script who o layers levels settings xlabel ylabel key-title
+                          elements-of)
+            (run-script o settings xlabel ylabel key-title
+                        (elements-of layers))))))
+
+  ;; Histogram layers record the range of their full data, so that facet
+  ;; panels, which only see a subset, use the same bins.
+  (define (with-bin-range l)
+    (if (eq? (layer-kind l) 'histogram)
+        (let ([vals (remove-na ($ (layer-df l) (layer-x l)))])
+          (make-layer 'histogram (layer-df l) (layer-x l) (layer-y l)
+                      (cons (cons 'bin-range (cons (apply min vals) (apply max vals)))
+                            (layer-o l))))
+        l))
 
   ;; Shared x positions for categorical layers, or #f if all x are numeric.
   ;; If any layer is categorical, the x values of all layers are mapped
@@ -241,14 +258,15 @@
   (define (histogram-elements l groups color title)
     (let* ([o (layer-o l)]
            [x (layer-x l)]
-           [vals (remove-na ($ (layer-df l) x))]
-           [lo (apply min vals)]
-           [hi (apply max vals)]
+           [range (opt o 'bin-range #f)]
+           [lo (car range)]
+           [hi (cdr range)]
+           [n (length (remove-na ($ (layer-df l) x)))]
            [width (inexact
                    (or (opt o 'binwidth #f)
                        (if (= lo hi)
                            1
-                           (/ (- hi lo) (opt o 'bins (sturges (length vals)))))))]
+                           (/ (- hi lo) (opt o 'bins (sturges (max n 1)))))))]
            [nbins (max 1 (exact (ceiling (/ (- hi lo) width))))]
            [fill (if (> (length groups) 1)
                      "fs transparent solid 0.5 border -1"
@@ -318,17 +336,199 @@
         (opt o 'commands '())
         (apply append (map (lambda (name e) (datablock name (car e)))
                            names elements))
-        (list
-         (string-append
-          "plot "
-          (join (map (lambda (name e title)
+        (list (plot-command names elements titles '()))
+        (if output '("unset output") '())))))
+
+  (define (plot-command names elements titles extra-clauses)
+    (if (and (null? elements) (null? extra-clauses))
+        "plot NaN notitle"
+        (string-append
+         "plot "
+         (join (append
+                (map (lambda (name e title)
                        (format "~a ~a ~a" name (cadr e)
                                (if title
                                    (string-append "title " (quote-string title))
                                    "notitle")))
                      names elements titles)
-                ", ")))
+                extra-clauses)
+               ", "))))
+
+  ;;---------------------------------------------------------------------
+  ;; Facets: one panel per value of the facet column, in a multiplot.
+
+  (define (facet-script who o layers levels settings default-xlabel default-ylabel
+                        key-title elements-of)
+    (let* ([facet (opt o 'facet #f)]
+           [faceted (filter (lambda (l) (dataframe-contains? (layer-df l) facet))
+                            layers)]
+           [_ (when (null? faceted)
+                (assertion-violation who "facet column not in any layer" facet))]
+           [facet-values (remove-duplicates
+                          (apply append
+                                 (map (lambda (l) (map ->label ($ (layer-df l) facet)))
+                                      faceted)))]
+           ;; layers without the facet column are drawn in every panel
+           [panels (map (lambda (v)
+                          (filter (lambda (e) (pair? (caar e)))
+                                  (elements-of
+                                   (map (lambda (l) (facet-layer l facet v)) layers))))
+                        facet-values)]
+           [n (length panels)]
+           [ncol (opt o 'facet-columns (exact (ceiling (sqrt n))))]
+           [nrow (exact (ceiling (/ n ncol)))]
+           [scales (opt o 'facet-scales 'fixed)]
+           [_ (unless (memq scales '(fixed free free-x free-y))
+                (assertion-violation who "facet-scales must be 'fixed, 'free, 'free-x, or 'free-y"
+                                     scales))]
+           [all-elements (apply append panels)]
+           [names (map (lambda (i) (format "$d~a" (+ i 1))) (iota (length all-elements)))]
+           [panel-names (split-at-lengths names (map length panels))]
+           [titles (unique-titles (map caddr all-elements))]
+           [key-entries (filter values (map key-entry all-elements titles))]
+           [key (opt o 'key (if (pair? key-entries) 'shared #f))]
+           [xlabel (opt o 'xlabel default-xlabel)]
+           [ylabel (opt o 'ylabel default-ylabel)]
+           [output (opt o 'output #f)]
+           [size (or (opt o 'size #f) '(640 480))]
+           [px (lambda (p) (/ p (inexact (car size))))]
+           [py (lambda (p) (/ p (inexact (cadr size))))]
+           ;; panel margins are fixed so that panels line up; the shared
+           ;; legend and axis labels go in the space around them
+           [left (px (if (equal? ylabel "") 60 80))]
+           [bottom (py (if (equal? xlabel "") 40 60))]
+           ;; room above the first row for panel titles and the plot title
+           [top (- 1 (py (if (opt o 'title #f) 70 40)))]
+           [legend-chars (apply max (map string-length
+                                         (cons (if key-title (symbol->string key-title) "")
+                                               (filter values titles))))]
+           [right (- 1 (px (if (eq? key 'shared) (+ 70 (* 9 legend-chars)) 20)))]
+           ;; between panels: tic labels on one side, panel title above
+           [xspacing (px 60)]
+           [yspacing (py 85)]
+           [panel-width (* (car size) (/ (- right left (* (- ncol 1) xspacing)) ncol))]
+           [panel-height (* (cadr size) (/ (- top bottom (* (- nrow 1) yspacing)) nrow))])
+      (send-script
+       (append
+        (apply append (map (lambda (name e) (datablock name (car e)))
+                           names all-elements))
+        settings
+        (if (opt o 'grid #f) '("set grid") '())
+        (range-command "xrange" (opt o 'xrange #f))
+        (range-command "yrange" (opt o 'yrange #f))
+        (logscale-command (opt o 'logscale #f))
+        (shared-ranges o scales levels names all-elements panel-width panel-height)
+        (opt o 'commands '())
+        (if output (output-commands output (opt o 'size #f)) '())
+        (list
+         "unset key"
+         (format "set multiplot layout ~a,~a margins ~a,~a,~a,~a spacing ~a,~a~a"
+                 nrow ncol (fmt left) (fmt right) (fmt bottom) (fmt top)
+                 (fmt xspacing) (fmt yspacing)
+                 (let ([title (opt o 'title #f)])
+                   (if title (string-append " title " (quote-string title)) ""))))
+        (apply append
+               (map (lambda (v elements names i)
+                      (let ([last? (= i (- n 1))])
+                        (append
+                         (list (string-append "set title " (quote-string v) " offset 0,-0.5"))
+                         (if last?
+                             (append
+                              (facet-key-commands key key-title right top px)
+                              (if (equal? xlabel "")
+                                  '()
+                                  (list (format "set label 1001 ~a at screen ~a, ~a center"
+                                                (quote-string xlabel)
+                                                (fmt (/ (+ left right) 2)) (fmt (py 15)))))
+                              (if (equal? ylabel "")
+                                  '()
+                                  (list (format "set label 1002 ~a at screen ~a, ~a center rotate by 90"
+                                                (quote-string ylabel)
+                                                (fmt (px 15)) (fmt (/ (+ bottom top) 2))))))
+                             '())
+                         (list (plot-command names elements
+                                             (map (lambda (e) #f) elements)
+                                             (if (and last? key) key-entries '()))))))
+                    facet-values panels panel-names (iota n)))
+        (list "unset multiplot")
         (if output '("unset output") '())))))
+
+  ;; A layer restricted to one facet value; layers without the facet
+  ;; column are unchanged.
+  (define (facet-layer l facet v)
+    (let ([df (layer-df l)])
+      (if (dataframe-contains? df facet)
+          (make-layer (layer-kind l)
+                      (subset-rows df (map (lambda (x) (string=? (->label x) v))
+                                           ($ df facet)))
+                      (layer-x l) (layer-y l) (layer-o l))
+          l)))
+
+  ;; With fixed scales, plot every panel's data together, discarding the
+  ;; output, and use the resulting axis ranges for all panels. The dumb
+  ;; terminal is used because the unknown terminal prints a warning.
+  ;; Panels are smaller than a full plot, so the tic spacing is also set
+  ;; from the shared range to fit the panel size.
+  (define (shared-ranges o scales levels names elements panel-width panel-height)
+    (let* ([logscale (let ([a (opt o 'logscale #f)]) (if a (symbol->string a) ""))]
+           [fix-x? (and (memq scales '(fixed free-y)) (not levels))]
+           [fix-y? (memq scales '(fixed free-x))]
+           [tics (lambda (axis max-tics)
+                   (if (string-index logscale (symbol->string axis))
+                       '()
+                       (list (format "set ~atics _nice_step(GPVAL_~a_MAX - GPVAL_~a_MIN, ~a)"
+                                     axis (axis-name axis) (axis-name axis)
+                                     (max 2 (exact (floor max-tics)))))))])
+      (if (and (or fix-x? fix-y?) (pair? elements))
+          (append
+           (list "set terminal push"
+                 "set terminal dumb"
+                 (string-append "set output " (quote-string (null-device)))
+                 (plot-command names elements (map (lambda (e) #f) elements) '())
+                 "set output"
+                 "set terminal pop"
+                 ;; largest of 1, 2, or 5 times a power of 10 giving at most n steps
+                 "_nice_m(s) = (s <= 1 ? 1 : s <= 2 ? 2 : s <= 5 ? 5 : 10)"
+                 "_nice_p(s) = 10**floor(log10(s))"
+                 "_nice_step(r, n) = _nice_m(r / n / _nice_p(r / n)) * _nice_p(r / n)")
+           (if fix-x?
+               (append (if (opt o 'xrange #f) '() '("set xrange [GPVAL_X_MIN:GPVAL_X_MAX]"))
+                       (tics 'x (/ panel-width 45)))
+               '())
+           (if fix-y?
+               (append (if (opt o 'yrange #f) '() '("set yrange [GPVAL_Y_MIN:GPVAL_Y_MAX]"))
+                       (tics 'y (/ panel-height 25)))
+               '()))
+          '())))
+
+  (define (axis-name axis)
+    (if (eq? axis 'x) "X" "Y"))
+
+  (define (null-device)
+    (let ([m (symbol->string (machine-type))])
+      (if (string-index m "nt") "NUL" "/dev/null")))
+
+  ;; Legend entry drawn without data, in the style of an element.
+  (define (key-entry e title)
+    (and title
+         (let* ([spec (cadr e)]
+                [style (substring spec (string-index spec "with ") (string-length spec))])
+           (format "keyentry ~a title ~a"
+                   (string-replace style "with boxplot" "with boxes")
+                   (quote-string title)))))
+
+  ;; The shared legend sits right of the panels; a key string instead
+  ;; places the legend inside the last panel.
+  (define (facet-key-commands key key-title right top px)
+    (cond [(eq? key 'shared)
+           (append
+            (list (format "set key at screen ~a, ~a left top"
+                          (fmt (+ right (px 10))) (fmt top)))
+            (if key-title
+                (list (string-append "set key title "
+                                     (quote-string (symbol->string key-title))))
+                '()))]
+          [else (key-commands key key-title)]))
 
   ;; A label gets one key entry, e.g., when points and lines share a group.
   (define (unique-titles titles)
@@ -462,6 +662,26 @@
       (cond [(null? vals) (reverse acc)]
             [(pred (car keys)) (loop (cdr vals) (cdr keys) (cons (car vals) acc))]
             [else (loop (cdr vals) (cdr keys) acc)])))
+
+  (define (split-at-lengths lst lengths)
+    (if (null? lengths)
+        '()
+        (cons (list-head lst (car lengths))
+              (split-at-lengths (list-tail lst (car lengths)) (cdr lengths)))))
+
+  (define (string-index s sub)
+    (let ([n (string-length s)] [m (string-length sub)])
+      (let loop ([i 0])
+        (cond [(> (+ i m) n) #f]
+              [(string=? (substring s i (+ i m)) sub) i]
+              [else (loop (+ i 1))]))))
+
+  (define (string-replace s old new)
+    (let ([i (string-index s old)])
+      (if i
+          (string-append (substring s 0 i) new
+                         (substring s (+ i (string-length old)) (string-length s)))
+          s)))
 
   (define (take-while pred lst)
     (if (and (pair? lst) (pred (car lst)))

@@ -2,7 +2,7 @@
 
 Plot [dataframes](https://hinkelman.github.io/dataframe) with [gnuplot](http://gnuplot.info) from Chez Scheme.
 
-The API is loosely modeled on base R plotting: one procedure per plot type, column names for the data, and options for labels, legends, and output. Like `ggplot2`, a `'group` column splits the data into colored series with a legend, and layers can be combined on the same axes.
+The API is loosely modeled on base R plotting: one procedure per plot type, column names for the data, and options for labels, legends, and output. Like `ggplot2`, a `'group` column splits the data into colored series with a legend, layers can be combined on the same axes, and a `'facet` column splits a plot into panels.
 
 [GitHub](https://github.com/hinkelman/gnuplot-dataframe) · [dataframe](https://hinkelman.github.io/dataframe) · [gnuplot-pipe](https://github.com/hinkelman/gnuplot-pipe)
 
@@ -38,6 +38,7 @@ The code for these plots is in [examples/examples.ss](https://github.com/hinkelm
 | ![lines](img/lines.png) | ![points](img/points.png) |
 | ![bars](img/bars.png) | ![histogram](img/histogram.png) |
 | ![boxplot](img/boxplot.png) | ![layers](img/layers-fit.png) |
+| ![facets](img/facet-layers.png) | ![faceted histogram](img/facet-histogram.png) |
 
 ## API Overview
 
@@ -46,4 +47,5 @@ The code for these plots is in [examples/examples.ss](https://github.com/hinkelm
 | [Plots](api/plots.md) | `plot-points`, `plot-lines`, `plot-bars`, `plot-histogram`, `plot-boxplot` |
 | [Options](api/options.md) | `'group`, `'title`, `'key`, `'output`, … |
 | [Layers](api/layers.md) | `plot-layers`, `layer-points`, `layer-lines`, `layer-bars`, `layer-histogram`, `layer-boxplot` |
+| [Facets](api/facets.md) | `'facet`, `'facet-columns`, `'facet-scales` |
 | [gnuplot Scripts](api/scripts.md) | `plot-dry-run`, `'commands` |

@@ -2,7 +2,7 @@
 
 ## Requirements
 
-[gnuplot](http://gnuplot.info) 5.0 or later (inline datablocks were added in 5.0). Tested with gnuplot 6.0 and Chez Scheme 10.3.
+[gnuplot](http://gnuplot.info) 5.2.6 or later. Tested with gnuplot 6.0 and Chez Scheme 10.3.
 
 `gnuplot-dataframe` depends on [dataframe](https://hinkelman.github.io/dataframe) and [gnuplot-pipe](https://github.com/hinkelman/gnuplot-pipe), which Akku installs automatically.
 

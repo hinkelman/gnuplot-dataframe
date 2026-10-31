@@ -138,4 +138,63 @@
 (test-error (script (lambda () (plot-layers (layer-points df 'month 'temp) 'group 'city))))
 (test-end "layers-test")
 
+;;-------------------------------------------------------------
+
+(test-begin "facet-test")
+(define fdf
+  (make-df* (month 1 2 1 2 1 2)
+            (temp 10 12 20 21 5 6)
+            (city "A" "A" "B" "B" "C" "C")
+            (kind "x" "y" "x" "y" "x" "x")))
+(define ref (make-df* (month 1 2) (temp 15 15)))
+(let ([s (script (lambda () (plot-layers (layer-points fdf 'month 'temp 'group 'kind)
+                                         (layer-lines ref 'month 'temp 'color "gray")
+                                         'facet 'city 'title "T")))])
+  ;; one panel per facet value in a near-square layout
+  (test-assert (contains? s "set multiplot layout 2,2 margins "))
+  (test-assert (contains? s " title 'T'\n"))
+  (test-assert (contains? s "set title 'A' offset 0,-0.5\n"))
+  (test-assert (contains? s "set title 'C' offset 0,-0.5\n"))
+  (test-assert (contains? s "unset multiplot\n"))
+  ;; fixed scales are measured from all panels together
+  (test-assert (contains? s "set terminal dumb\n"))
+  (test-assert (contains? s "set xrange [GPVAL_X_MIN:GPVAL_X_MAX]\n"))
+  (test-assert (contains? s "set yrange [GPVAL_Y_MIN:GPVAL_Y_MAX]\n"))
+  ;; group colors are shared across panels, and a layer without the
+  ;; facet column is repeated in every panel
+  (test-assert (contains? s "set title 'C' offset 0,-0.5\nset key at screen "))
+  (test-assert (contains? s "plot $d7 using 1:2 with points pt 7 ps 1 lc 1 notitle, $d8 using 1:2 with lines lw 2 lc rgb 'gray' notitle, "))
+  (test-assert (contains? s "$d8 << EOD\n1 15\n2 15\nEOD\n"))
+  ;; one shared legend, drawn with the last panel
+  (test-assert (contains? s "set key title 'kind'\n"))
+  (test-assert (contains? s "keyentry with points pt 7 ps 1 lc 1 title 'x', keyentry with points pt 7 ps 1 lc 2 title 'y'\n"))
+  (test-assert (contains? s "set label 1001 'month' at screen "))
+  (test-assert (contains? s "set label 1002 'temp' at screen ")))
+(let ([s (script (lambda () (plot-points fdf 'month 'temp 'facet 'city
+                                         'facet-columns 3 'facet-scales 'free)))])
+  (test-assert (contains? s "set multiplot layout 1,3 margins "))
+  (test-assert (not (contains? s "GPVAL")))
+  (test-assert (not (contains? s "keyentry"))))
+(let ([s (script (lambda () (plot-points fdf 'month 'temp 'facet 'city 'facet-scales 'free-y)))])
+  (test-assert (contains? s "set xrange [GPVAL_X_MIN:GPVAL_X_MAX]\n"))
+  (test-assert (not (contains? s "set yrange [GPVAL"))))
+;; a user range is kept, and a key string places the legend in the last panel
+(let ([s (script (lambda () (plot-points fdf 'month 'temp 'facet 'city 'group 'kind
+                                         'yrange '(0 30) 'key "top left")))])
+  (test-assert (contains? s "set yrange [0:30]\n"))
+  (test-assert (not (contains? s "set yrange [GPVAL")))
+  (test-assert (contains? s "set key top left\n")))
+;; histogram panels share the bins of the full data
+(let ([s (script (lambda () (plot-histogram (make-df* (x 0 1 2 3) (g "a" "a" "b" "b"))
+                                            'x 'binwidth 1 'facet 'g)))])
+  (test-assert (contains? s "$d1 << EOD\n0.5 1 1.0\n1.5 1 1.0\n2.5 0 1.0\nEOD\n"))
+  (test-assert (contains? s "$d2 << EOD\n0.5 0 1.0\n1.5 0 1.0\n2.5 2 1.0\nEOD\n")))
+;; boxplot legend entries are drawn as boxes
+(test-assert (contains? (script (lambda () (plot-boxplot fdf 'city 'temp 'group 'kind 'facet 'kind)))
+                        "keyentry with boxes fs solid 0.5 border -1 lc 1 title 'x'"))
+(test-error (script (lambda () (plot-points fdf 'month 'temp 'facet 'missing))))
+(test-error (script (lambda () (plot-points fdf 'month 'temp 'facet 'city 'facet-scales 'loose))))
+(test-error (script (lambda () (plot-layers (layer-points fdf 'month 'temp 'facet 'city)))))
+(test-end "facet-test")
+
 (exit (if (zero? (test-runner-fail-count (test-runner-get))) 0 1))

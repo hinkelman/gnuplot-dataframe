@@ -93,3 +93,15 @@
                            'label "Mean")
              'ylabel "Sepal length"
              'output "docs/img/layers-boxplot.png")
+
+;; Facets ---------------------------------------------------------------
+
+(plot-layers (layer-points flowers 'length 'width 'group 'species)
+             (layer-lines fits 'length 'width 'group 'species)
+             'facet 'species
+             'xlabel "Sepal length" 'ylabel "Sepal width"
+             'output "docs/img/facet-layers.png")
+
+(plot-histogram flowers 'length 'facet 'species 'facet-columns 1 'binwidth 0.2
+                'xlabel "Sepal length"
+                'output "docs/img/facet-histogram.png")
